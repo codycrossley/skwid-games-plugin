@@ -1,0 +1,215 @@
+package com.example;
+
+import com.google.common.base.Strings;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import java.lang.reflect.Type;
+import java.util.HashMap;
+import java.util.Map;
+import lombok.RequiredArgsConstructor;
+import net.runelite.api.Client;
+import net.runelite.client.config.ConfigManager;
+import net.runelite.client.util.Text;
+
+@RequiredArgsConstructor
+public class AccountConfig
+{
+    private final ConfigManager configManager;
+    private final Client client;
+
+    private static final String KEY_ACTIVE_GAME = "activeGameId";
+    private static final String KEY_JOIN_CODE   = "joinCode";
+    private static final String KEY_WRITE_KEY   = "writeKey";
+    private static final String KEY_COMMANDER   = "commander";
+
+    // gameId -> writeKey cache (stored as JSON)
+    private static final String KEY_COMMANDER_KEYRING_JSON = "commanderKeyringJson";
+    private static final Gson GSON = new Gson();
+    private static final Type MAP_TYPE = new TypeToken<Map<String, String>>(){}.getType();
+
+    public String getActiveGameId()
+    {
+        String rsKey = getRsProfileKeyOrNull();
+        if (rsKey != null)
+        {
+            return configManager.getRSProfileConfiguration(SkwidGamesConfig.GROUP, KEY_ACTIVE_GAME);
+        }
+        return configManager.getConfiguration(SkwidGamesConfig.GROUP, KEY_ACTIVE_GAME + "." + getLocalPlayerKey());
+    }
+
+    public void setActiveGameId(String gameId)
+    {
+        String rsKey = getRsProfileKeyOrNull();
+        if (rsKey != null)
+        {
+            configManager.setRSProfileConfiguration(SkwidGamesConfig.GROUP, KEY_ACTIVE_GAME, gameId);
+            return;
+        }
+        configManager.setConfiguration(SkwidGamesConfig.GROUP, KEY_ACTIVE_GAME + "." + getLocalPlayerKey(), gameId);
+    }
+
+    public String getJoinCode()
+    {
+        String rsKey = getRsProfileKeyOrNull();
+        if (rsKey != null)
+        {
+            return configManager.getRSProfileConfiguration(SkwidGamesConfig.GROUP, KEY_JOIN_CODE);
+        }
+        return configManager.getConfiguration(SkwidGamesConfig.GROUP, KEY_JOIN_CODE + "." + getLocalPlayerKey());
+    }
+
+    public void setJoinCode(String joinCode)
+    {
+        String rsKey = getRsProfileKeyOrNull();
+        if (rsKey != null)
+        {
+            configManager.setRSProfileConfiguration(SkwidGamesConfig.GROUP, KEY_JOIN_CODE, joinCode);
+            return;
+        }
+        configManager.setConfiguration(SkwidGamesConfig.GROUP, KEY_JOIN_CODE + "." + getLocalPlayerKey(), joinCode);
+    }
+
+    public String getWriteKey()
+    {
+        String rsKey = getRsProfileKeyOrNull();
+        if (rsKey != null)
+        {
+            return configManager.getRSProfileConfiguration(SkwidGamesConfig.GROUP, KEY_WRITE_KEY);
+        }
+        return configManager.getConfiguration(SkwidGamesConfig.GROUP, KEY_WRITE_KEY + "." + getLocalPlayerKey());
+    }
+
+    public void setWriteKey(String writeKey)
+    {
+        String rsKey = getRsProfileKeyOrNull();
+        if (rsKey != null)
+        {
+            configManager.setRSProfileConfiguration(SkwidGamesConfig.GROUP, KEY_WRITE_KEY, writeKey);
+            return;
+        }
+        configManager.setConfiguration(SkwidGamesConfig.GROUP, KEY_WRITE_KEY + "." + getLocalPlayerKey(), writeKey);
+    }
+
+    public String getCommander()
+    {
+        return configManager.getRSProfileConfiguration(SkwidGamesConfig.GROUP, KEY_COMMANDER);
+    }
+
+    public void setCommander(String commander)
+    {
+        configManager.setRSProfileConfiguration(SkwidGamesConfig.GROUP, KEY_COMMANDER, commander);
+    }
+
+    public void clearGamePointers()
+    {
+        setActiveGameId("");
+        setJoinCode("");
+        setWriteKey("");
+        setCommander("");
+    }
+
+    public void cacheWriteKeyForGame(final String gameId, final String writeKey)
+    {
+        if (Strings.isNullOrEmpty(gameId) || Strings.isNullOrEmpty(writeKey))
+        {
+            return;
+        }
+        final Map<String, String> keyring = loadCommanderKeyring();
+        keyring.put(gameId, writeKey);
+        saveCommanderKeyring(keyring);
+    }
+
+    public String getCachedWriteKeyForGame(final String gameId)
+    {
+        if (Strings.isNullOrEmpty(gameId))
+        {
+            return "";
+        }
+        final Map<String, String> keyring = loadCommanderKeyring();
+        final String wk = keyring.get(gameId);
+        return wk != null ? wk : "";
+    }
+
+    public void forgetWriteKeyForGame(final String gameId)
+    {
+        if (Strings.isNullOrEmpty(gameId))
+        {
+            return;
+        }
+        final Map<String, String> keyring = loadCommanderKeyring();
+        if (keyring.remove(gameId) != null)
+        {
+            saveCommanderKeyring(keyring);
+        }
+    }
+
+    private Map<String, String> loadCommanderKeyring()
+    {
+        final String raw = getCommanderKeyringJson();
+        if (Strings.isNullOrEmpty(raw))
+        {
+            return new HashMap<>();
+        }
+
+        try
+        {
+            final Map<String, String> parsed = GSON.fromJson(raw, MAP_TYPE);
+            return parsed != null ? new HashMap<>(parsed) : new HashMap<>();
+        }
+        catch (Exception ignored)
+        {
+            // If someone edits config manually and breaks JSON, fail safe.
+            return new HashMap<>();
+        }
+    }
+
+    private void saveCommanderKeyring(final Map<String, String> keyring)
+    {
+        setCommanderKeyringJson(GSON.toJson(keyring != null ? keyring : new HashMap<>()));
+    }
+
+    private String getCommanderKeyringJson()
+    {
+        // Store keyring at the RS Profile scope when available (so it's per-profile)
+        String rsKey = getRsProfileKeyOrNull();
+        if (rsKey != null)
+        {
+            return configManager.getRSProfileConfiguration(SkwidGamesConfig.GROUP, KEY_COMMANDER_KEYRING_JSON);
+        }
+        // Otherwise, store per local player key (so multiple accounts don't collide)
+        return configManager.getConfiguration(SkwidGamesConfig.GROUP, KEY_COMMANDER_KEYRING_JSON + "." + getLocalPlayerKey());
+    }
+
+    private void setCommanderKeyringJson(final String json)
+    {
+        String rsKey = getRsProfileKeyOrNull();
+        if (rsKey != null)
+        {
+            configManager.setRSProfileConfiguration(SkwidGamesConfig.GROUP, KEY_COMMANDER_KEYRING_JSON, json);
+            return;
+        }
+        configManager.setConfiguration(SkwidGamesConfig.GROUP, KEY_COMMANDER_KEYRING_JSON + "." + getLocalPlayerKey(), json);
+    }
+
+    private String getLocalPlayerKey()
+    {
+        if (client.getLocalPlayer() == null || client.getLocalPlayer().getName() == null)
+        {
+            return "unknown";
+        }
+        return Text.toJagexName(client.getLocalPlayer().getName()).toLowerCase();
+    }
+
+    private String getRsProfileKeyOrNull()
+    {
+        try
+        {
+            Object key = ConfigManager.class.getMethod("getRSProfileKey").invoke(configManager);
+            return key != null ? key.toString() : null;
+        }
+        catch (Exception ignored)
+        {
+            return null;
+        }
+    }
+}
