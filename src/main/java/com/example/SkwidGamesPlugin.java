@@ -20,7 +20,9 @@ import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.MenuOptionClicked;
 
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
@@ -56,6 +58,8 @@ public class SkwidGamesPlugin extends Plugin
     private SharedTileOverlay tileOverlay;
     /** RSNs (lowercase) for which the Commander has published an elimination this session. */
     private final Set<String> pendingEliminations = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /** Tracks the last seen stoplight state to detect RED transitions for elimination. */
+    private String lastSeenStoplightState = "GREEN";
 
     @Provides
     SkwidGamesConfig provideConfig(ConfigManager configManager)
@@ -382,6 +386,7 @@ public class SkwidGamesPlugin extends Plugin
             tileMarkerReducer.reset();
         }
         pendingEliminations.clear();
+        lastSeenStoplightState = "GREEN";
     }
 
     public String getJoinCode()
@@ -402,6 +407,30 @@ public class SkwidGamesPlugin extends Plugin
     public boolean isLocalCommander()
     {
         return gameService.isLocalCommander();
+    }
+
+    public String getStoplightState()
+    {
+        return tileMarkerReducer != null ? tileMarkerReducer.getStoplightState() : "GREEN";
+    }
+
+    public void toggleStoplightFromPanel()
+    {
+        String current = getStoplightState();
+        String next = "RED".equals(current) ? "GREEN" : "RED";
+
+        new Thread(() ->
+        {
+            try
+            {
+                gameService.publishStoplightState(next);
+            }
+            catch (Exception ex)
+            {
+                log.warn("Failed to publish stoplight state: {}", ex.getMessage());
+                chat("Failed to toggle stoplight: " + ex.getMessage());
+            }
+        }, "skwid-stoplight-toggle").start();
     }
 
     private void loadTilesAsync(String gameId)
@@ -541,7 +570,7 @@ public class SkwidGamesPlugin extends Plugin
         Integer number = rosterReducer.getNumber(canonical);
         if (number == null) return;
 
-        event.getMessageNode().setName("Player " + String.format("%03d", number));
+        event.getMessageNode().setName("(" + String.format("%03d", number) + ") " + canonical);
     }
 
     @Subscribe
@@ -550,6 +579,51 @@ public class SkwidGamesPlugin extends Plugin
         if (gameService == null || !gameService.isLocalCommander()) return;
         String gameId = gameService.getActiveGameId();
         if (gameId == null || gameId.isBlank()) return;
+
+        // Stoplight: eliminate players on STOPLIGHT tiles at the moment state turns RED
+        String currentStoplightState = tileMarkerReducer.getStoplightState();
+        boolean stoplightJustTurnedRed = "RED".equals(currentStoplightState)
+                && "GREEN".equals(lastSeenStoplightState);
+        lastSeenStoplightState = currentStoplightState;
+
+        if (stoplightJustTurnedRed)
+        {
+            java.util.List<TileMarkerReducer.TileMarkerEntry> stoplights =
+                    tileMarkerReducer.snapshotStoplights();
+            if (!stoplights.isEmpty())
+            {
+                Set<WorldPoint> stoplightPoints = new HashSet<>();
+                for (TileMarkerReducer.TileMarkerEntry sl : stoplights)
+                {
+                    stoplightPoints.add(sl.point);
+                }
+
+                for (Player p : client.getPlayers())
+                {
+                    if (p == null || p.getName() == null) continue;
+                    String rsn = Text.toJagexName(p.getName());
+                    if (rsn == null || rsn.isBlank()) continue;
+                    if (rosterReducer.getRole(rsn) != PlayerRole.CONTESTANT) continue;
+                    if (rosterReducer.getStatus(rsn) == PlayerStatus.ELIMINATED) continue;
+                    if (pendingEliminations.contains(rsn.toLowerCase(java.util.Locale.ROOT))) continue;
+
+                    if (stoplightPoints.contains(p.getWorldLocation()))
+                    {
+                        pendingEliminations.add(rsn.toLowerCase(java.util.Locale.ROOT));
+                        final String victim = rsn;
+                        new Thread(() ->
+                        {
+                            try { gameService.eliminate(victim); }
+                            catch (Exception ex)
+                            {
+                                log.warn("Stoplight eliminate failed for {}", victim, ex);
+                                pendingEliminations.remove(victim.toLowerCase(java.util.Locale.ROOT));
+                            }
+                        }, "skwid-stoplight").start();
+                    }
+                }
+            }
+        }
 
         if (tileMarkerReducer.snapshotLandmines().isEmpty()) return;
 
@@ -749,7 +823,7 @@ public class SkwidGamesPlugin extends Plugin
             javax.swing.JTextField labelField = new javax.swing.JTextField(16);
 
             // --- Tile class radio buttons ---
-            String[] classes = {"STANDARD", "LANDMINE", "SAFE_ZONE", "BOUNDARY"};
+            String[] classes = {"STANDARD", "LANDMINE", "SAFE_ZONE", "BOUNDARY", "STOPLIGHT"};
             javax.swing.ButtonGroup classGroup = new javax.swing.ButtonGroup();
             javax.swing.JRadioButton[] classButtons = new javax.swing.JRadioButton[classes.length];
             javax.swing.JPanel classPanel = new javax.swing.JPanel();

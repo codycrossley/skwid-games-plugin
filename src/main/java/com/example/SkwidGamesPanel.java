@@ -67,6 +67,7 @@ public class SkwidGamesPanel extends PluginPanel
     private final JButton copyJoinCodeBtn = new JButton("Copy Join Code");
     private final JButton leaveBtn = new JButton("Leave Game");
     private final JButton endGameBtn = new JButton("End Game");
+    private final JButton stoplightBtn = new JButton("Red Light");
 
     // ----- NEW: Roster UI components -----
     // Container with titled border ("Roster")
@@ -148,9 +149,10 @@ public class SkwidGamesPanel extends PluginPanel
         copyJoinCodeBtn.addActionListener(e -> copyToClipboard(joinCodeValueLabel.getText()));
         leaveBtn.addActionListener(e -> plugin.leaveGameFromPanel());
         endGameBtn.addActionListener(e -> plugin.endRoundFromPanel());
+        stoplightBtn.addActionListener(e -> plugin.toggleStoplightFromPanel());
 
         // Uniform button styling
-        for (JButton btn : new JButton[]{createBtn, joinBtn, copyJoinCodeBtn, leaveBtn, endGameBtn})
+        for (JButton btn : new JButton[]{createBtn, joinBtn, copyJoinCodeBtn, leaveBtn, endGameBtn, stoplightBtn})
         {
             styleBtn(btn);
         }
@@ -223,7 +225,8 @@ public class SkwidGamesPanel extends PluginPanel
         p.add(copyJoinCodeBtn);
         p.add(leaveBtn);
 
-        // Commander-only action (visibility toggled in refreshState)
+        // Commander-only actions (visibility toggled in refreshState)
+        p.add(stoplightBtn);
         p.add(endGameBtn);
 
         return p;
@@ -526,6 +529,22 @@ public class SkwidGamesPanel extends PluginPanel
 
         boolean isCommander = plugin.isLocalCommander();
         endGameBtn.setVisible(isCommander);
+        stoplightBtn.setVisible(isCommander);
+
+        if (isCommander)
+        {
+            String stoplightState = plugin.getStoplightState();
+            if ("RED".equals(stoplightState))
+            {
+                stoplightBtn.setText("Green Light");
+                stoplightBtn.setForeground(new Color(0, 200, 0));
+            }
+            else
+            {
+                stoplightBtn.setText("Red Light");
+                stoplightBtn.setForeground(new Color(214, 9, 65));
+            }
+        }
 
         // When in game, render roster for current game
         refreshRoster();
@@ -534,6 +553,7 @@ public class SkwidGamesPanel extends PluginPanel
     public void showGameEnded()
     {
         endGameBtn.setVisible(false);
+        stoplightBtn.setVisible(false);
         statusPill.setText("Ended");
         statusPill.setBackground(new Color(120, 30, 30));
         statusPill.setForeground(Color.WHITE);

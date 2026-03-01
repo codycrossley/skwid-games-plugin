@@ -238,6 +238,14 @@ public class RelayClient implements GameService.RelayGateway
     }
 
     @Override
+    public void publishStoplightState(String gameId, String writeKey, String state) throws Exception
+    {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("state", state);
+        publishEvent(gameId, writeKey, "STOPLIGHT_STATE", payload);
+    }
+
+    @Override
     public void publishTileUnmarked(String gameId, String writeKey, int x, int y, int plane) throws Exception
     {
         JsonObject payload = new JsonObject();

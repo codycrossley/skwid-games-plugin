@@ -126,6 +126,7 @@ public class GameService
             case "LANDMINE":  return "#FF0000";
             case "SAFE_ZONE": return "#00FF00";
             case "BOUNDARY":  return "#0080FF";
+            case "STOPLIGHT": return "#00FF00"; // starts green; overlay overrides dynamically
             default:          return "#FFFF00";
         }
     }
@@ -141,6 +142,14 @@ public class GameService
     public List<TileMarkerReducer.TileMarkerEntry> fetchTiles(String gameId) throws Exception
     {
         return relay.fetchTiles(gameId);
+    }
+
+    public void publishStoplightState(String state) throws Exception
+    {
+        String gameId = requireActiveGameId();
+        String writeKey = requireWriteKey();
+        requireRelayEnabled();
+        relay.publishStoplightState(gameId, writeKey, state);
     }
 
     public void leaveGameRemote() throws Exception
@@ -324,5 +333,7 @@ public class GameService
         void publishTileUnmarked(String gameId, String writeKey, int x, int y, int plane) throws Exception;
 
         List<TileMarkerReducer.TileMarkerEntry> fetchTiles(String gameId) throws Exception;
+
+        void publishStoplightState(String gameId, String writeKey, String state) throws Exception;
     }
 }
