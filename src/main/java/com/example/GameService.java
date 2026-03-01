@@ -2,9 +2,12 @@ package com.example;
 
 import lombok.RequiredArgsConstructor;
 import net.runelite.api.Client;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.util.Text;
 
+import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * GameService owns "game lifecycle" + per-account pointers:
@@ -102,6 +105,42 @@ public class GameService
 
         String player = requireCanonicalPlayer(targetCanonical);
         relay.publishRemove(gameId, writeKey, player);
+    }
+
+    public void markTile(WorldPoint wp, String label, String tileClass, Set<String> visibleTo) throws Exception
+    {
+        String gameId = requireActiveGameId();
+        String writeKey = requireWriteKey();
+        requireRelayEnabled();
+        String me = requireLocalPlayerCanonical();
+        String color = colorForClass(tileClass);
+        relay.publishTileMarked(gameId, writeKey, wp.getX(), wp.getY(), wp.getPlane(),
+                label, color, me, tileClass, visibleTo);
+    }
+
+    private static String colorForClass(String tileClass)
+    {
+        if (tileClass == null) return "#FFFF00";
+        switch (tileClass.toUpperCase(Locale.ROOT))
+        {
+            case "LANDMINE":  return "#FF0000";
+            case "SAFE_ZONE": return "#00FF00";
+            case "BOUNDARY":  return "#0080FF";
+            default:          return "#FFFF00";
+        }
+    }
+
+    public void unmarkTile(WorldPoint wp) throws Exception
+    {
+        String gameId = requireActiveGameId();
+        String writeKey = requireWriteKey();
+        requireRelayEnabled();
+        relay.publishTileUnmarked(gameId, writeKey, wp.getX(), wp.getY(), wp.getPlane());
+    }
+
+    public List<TileMarkerReducer.TileMarkerEntry> fetchTiles(String gameId) throws Exception
+    {
+        return relay.fetchTiles(gameId);
     }
 
     public void leaveGameRemote() throws Exception
@@ -277,5 +316,13 @@ public class GameService
         void publishGameEnded(String gameId, String writeKey) throws Exception;
 
         void endGame(String gameId, String writeKey) throws Exception;
+
+        void publishTileMarked(String gameId, String writeKey, int x, int y, int plane,
+                               String label, String color, String markedBy,
+                               String tileClass, Set<String> visibleTo) throws Exception;
+
+        void publishTileUnmarked(String gameId, String writeKey, int x, int y, int plane) throws Exception;
+
+        List<TileMarkerReducer.TileMarkerEntry> fetchTiles(String gameId) throws Exception;
     }
 }

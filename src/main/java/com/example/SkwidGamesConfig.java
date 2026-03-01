@@ -27,4 +27,14 @@ public interface SkwidGamesConfig extends Config
         return true;
     }
 
+    @ConfigItem(
+            keyName = "showTileOverlay",
+            name = "Show shared tile markers",
+            description = "Draw tile markers shared by the Commander"
+    )
+    default boolean showTileOverlay()
+    {
+        return true;
+    }
+
 }

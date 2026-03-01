@@ -2,12 +2,18 @@ package com.example;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 @Slf4j
 public class RelayClient implements GameService.RelayGateway
@@ -209,6 +215,77 @@ public class RelayClient implements GameService.RelayGateway
         }
     }
 
+    @Override
+    public void publishTileMarked(String gameId, String writeKey, int x, int y, int plane,
+                                  String label, String color, String markedBy,
+                                  String tileClass, Set<String> visibleTo) throws Exception
+    {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("x", x);
+        payload.addProperty("y", y);
+        payload.addProperty("plane", plane);
+        if (label     != null) payload.addProperty("label",     label);
+        if (color     != null) payload.addProperty("color",     color);
+        if (markedBy  != null) payload.addProperty("markedBy",  markedBy);
+        if (tileClass != null) payload.addProperty("tileClass", tileClass);
+        if (visibleTo != null && !visibleTo.isEmpty())
+        {
+            JsonArray arr = new JsonArray();
+            for (String role : visibleTo) arr.add(role);
+            payload.add("visibleTo", arr);
+        }
+        publishEvent(gameId, writeKey, "TILE_MARKED", payload);
+    }
+
+    @Override
+    public void publishTileUnmarked(String gameId, String writeKey, int x, int y, int plane) throws Exception
+    {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("x", x);
+        payload.addProperty("y", y);
+        payload.addProperty("plane", plane);
+        publishEvent(gameId, writeKey, "TILE_UNMARKED", payload);
+    }
+
+    @Override
+    public List<TileMarkerReducer.TileMarkerEntry> fetchTiles(String gameId) throws Exception
+    {
+        String url = baseUrl + "/v1/games/" + gameId + "/tiles";
+
+        Request req = new Request.Builder()
+                .url(url)
+                .get()
+                .build();
+
+        try (Response resp = http.newCall(req).execute())
+        {
+            String respBody = resp.body() != null ? resp.body().string() : "";
+            if (!resp.isSuccessful())
+            {
+                throw new IOException("Fetch tiles failed (" + resp.code() + "): " + respBody);
+            }
+
+            FetchTilesResponse parsed = gson.fromJson(respBody, FetchTilesResponse.class);
+            if (parsed == null || parsed.tiles == null)
+            {
+                return Collections.emptyList();
+            }
+
+            List<TileMarkerReducer.TileMarkerEntry> out = new ArrayList<>();
+            for (TileOut t : parsed.tiles)
+            {
+                net.runelite.api.coords.WorldPoint wp =
+                        new net.runelite.api.coords.WorldPoint(t.x, t.y, t.plane);
+                Set<String> visibleTo = (t.visibleTo != null)
+                        ? Collections.unmodifiableSet(new HashSet<>(t.visibleTo))
+                        : Collections.emptySet();
+                out.add(new TileMarkerReducer.TileMarkerEntry(
+                        wp, t.label, t.color, t.markedBy, t.tileClass, visibleTo));
+            }
+            return out;
+        }
+    }
+
     private void publishEvent(String gameId, String writeKey, String type, JsonObject payload) throws Exception
     {
         String url = baseUrl + "/v1/games/" + gameId + "/events";
@@ -300,6 +377,24 @@ public class RelayClient implements GameService.RelayGateway
         String type;
         com.google.gson.JsonObject payload;
         String actor;
+    }
+
+    private static class FetchTilesResponse
+    {
+        String gameId;
+        java.util.List<TileOut> tiles;
+    }
+
+    private static class TileOut
+    {
+        int x;
+        int y;
+        int plane;
+        String label;
+        String color;
+        String markedBy;
+        String tileClass;
+        List<String> visibleTo;
     }
 
     // -------- small helpers --------

@@ -9,11 +9,19 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.GameState;
+import net.runelite.api.KeyCode;
 import net.runelite.api.MenuEntry;
+import net.runelite.api.Player;
+import net.runelite.api.Tile;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.MenuOptionClicked;
+
+import java.util.HashSet;
+import java.util.Set;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -44,6 +52,10 @@ public class SkwidGamesPlugin extends Plugin
     private EventPoller poller;
     private RosterReducer rosterReducer;
     private RoleOverlay roleOverlay;
+    private TileMarkerReducer tileMarkerReducer;
+    private SharedTileOverlay tileOverlay;
+    /** RSNs (lowercase) for which the Commander has published an elimination this session. */
+    private final Set<String> pendingEliminations = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     @Provides
     SkwidGamesConfig provideConfig(ConfigManager configManager)
@@ -59,6 +71,7 @@ public class SkwidGamesPlugin extends Plugin
         relayClient = new RelayClient(config.relayBaseUrl());
         gameService = new GameService(client, accountConfig, relayClient);
         rosterReducer = new RosterReducer();
+        tileMarkerReducer = new TileMarkerReducer();
 
         poller = new EventPoller(relayClient, new EventPoller.Listener()
         {
@@ -66,6 +79,16 @@ public class SkwidGamesPlugin extends Plugin
             public void onEvent(RelayClient.EventOut e)
             {
                 rosterReducer.apply(e);
+                tileMarkerReducer.apply(e);
+
+                // Release pending-elimination lock when the relay confirms the elimination
+                if ("ELIMINATED".equals(e.type) && e.payload != null
+                        && e.payload.has("player") && !e.payload.get("player").isJsonNull())
+                {
+                    pendingEliminations.remove(
+                            e.payload.get("player").getAsString().toLowerCase(java.util.Locale.ROOT));
+                }
+
                 if ("GAME_ENDED".equals(e.type))
                 {
                     resetLocalGameState();
@@ -88,6 +111,8 @@ public class SkwidGamesPlugin extends Plugin
         menuManager.addPlayerMenuItem("Enlist…");
         roleOverlay = new RoleOverlay(client, config, gameService, rosterReducer);
         overlayManager.add(roleOverlay);
+        tileOverlay = new SharedTileOverlay(client, config, gameService, tileMarkerReducer, rosterReducer);
+        overlayManager.add(tileOverlay);
 
         // TODO: Design an icon
         java.awt.image.BufferedImage icon = ImageUtil.loadImageResource(SkwidGamesPlugin.class, "panel_icon.png");
@@ -131,6 +156,7 @@ public class SkwidGamesPlugin extends Plugin
         }
 
         if (roleOverlay != null) overlayManager.remove(roleOverlay);
+        if (tileOverlay != null) overlayManager.remove(tileOverlay);
         if (poller != null) poller.shutdown();
     }
 
@@ -224,6 +250,7 @@ public class SkwidGamesPlugin extends Plugin
                         && gameId != null && !gameId.isBlank())
                 {
                     poller.start(gameId);
+                    loadTilesAsync(gameId);
                 }
 
                 String msg = (joinCode != null && !joinCode.isBlank())
@@ -274,6 +301,7 @@ public class SkwidGamesPlugin extends Plugin
                 if (poller != null && relayClient != null && relayClient.isEnabled())
                 {
                     poller.start(gameId);
+                    loadTilesAsync(gameId);
                 }
 
                 chat("You have joined a Skwid Game (join code: " + gameService.getJoinCode() + ").");
@@ -349,6 +377,11 @@ public class SkwidGamesPlugin extends Plugin
         {
             rosterReducer.reset();
         }
+        if (tileMarkerReducer != null)
+        {
+            tileMarkerReducer.reset();
+        }
+        pendingEliminations.clear();
     }
 
     public String getJoinCode()
@@ -371,6 +404,23 @@ public class SkwidGamesPlugin extends Plugin
         return gameService.isLocalCommander();
     }
 
+    private void loadTilesAsync(String gameId)
+    {
+        new Thread(() ->
+        {
+            try
+            {
+                java.util.List<TileMarkerReducer.TileMarkerEntry> tiles =
+                        gameService.fetchTiles(gameId);
+                tileMarkerReducer.loadAll(tiles);
+            }
+            catch (Exception ex)
+            {
+                log.debug("Failed to fetch tiles: {}", ex.getMessage());
+            }
+        }, "skwid-fetch-tiles").start();
+    }
+
     // -------------------------------------------------------------------------
     // Menu handling
     // -------------------------------------------------------------------------
@@ -385,6 +435,26 @@ public class SkwidGamesPlugin extends Plugin
         }
 
         replaceMenuTargetWithNumber();
+
+        // Tile marking: inject when Commander shift+right-clicks the ground
+        if ("Walk here".equals(e.getOption())
+                && gameService != null
+                && gameService.isLocalCommander()
+                && client.isKeyPressed(KeyCode.KC_SHIFT))
+        {
+            Tile selectedTile = client.getSelectedSceneTile();
+            if (selectedTile != null)
+            {
+                WorldPoint wp = selectedTile.getWorldLocation();
+                boolean alreadyMarked = tileMarkerReducer.getMarker(wp) != null;
+                String label = alreadyMarked ? "Unmark tile" : "Mark tile";
+                client.createMenuEntry(-1)
+                        .setOption(label)
+                        .setTarget("")
+                        .setType(net.runelite.api.MenuAction.RUNELITE)
+                        .setDeprioritized(false);
+            }
+        }
     }
 
     /**
@@ -440,6 +510,19 @@ public class SkwidGamesPlugin extends Plugin
         if ("Enlist…".equalsIgnoreCase(opt) || "Enlist...".equalsIgnoreCase(opt))
         {
             handleEnlist(event);
+            return;
+        }
+
+        // Tile marking
+        if ("Mark tile".equalsIgnoreCase(opt))
+        {
+            handleMarkTile();
+            return;
+        }
+
+        if ("Unmark tile".equalsIgnoreCase(opt))
+        {
+            handleUnmarkTile();
         }
     }
 
@@ -459,6 +542,59 @@ public class SkwidGamesPlugin extends Plugin
         if (number == null) return;
 
         event.getMessageNode().setName("Player " + String.format("%03d", number));
+    }
+
+    @Subscribe
+    public void onGameTick(GameTick event)
+    {
+        if (gameService == null || !gameService.isLocalCommander()) return;
+        String gameId = gameService.getActiveGameId();
+        if (gameId == null || gameId.isBlank()) return;
+
+        if (tileMarkerReducer.snapshotLandmines().isEmpty()) return;
+
+        for (Player p : client.getPlayers())
+        {
+            if (p == null || p.getName() == null) continue;
+            String rsn = Text.toJagexName(p.getName());
+            if (rsn == null || rsn.isBlank()) continue;
+
+            if (rosterReducer.getRole(rsn) != PlayerRole.CONTESTANT) continue;
+            if (rosterReducer.getStatus(rsn) == PlayerStatus.ELIMINATED) continue;
+            if (pendingEliminations.contains(rsn.toLowerCase(java.util.Locale.ROOT))) continue;
+
+            TileMarkerReducer.TileMarkerEntry landmine =
+                    tileMarkerReducer.getMarker(p.getWorldLocation());
+            if (landmine == null || !"LANDMINE".equalsIgnoreCase(landmine.tileClass)) continue;
+
+            pendingEliminations.add(rsn.toLowerCase(java.util.Locale.ROOT));
+            final String victim = rsn;
+            final TileMarkerReducer.TileMarkerEntry triggeredTile = landmine;
+            new Thread(() ->
+            {
+                try
+                {
+                    gameService.eliminate(victim);
+                }
+                catch (Exception ex)
+                {
+                    log.warn("Landmine eliminate failed for {}", victim, ex);
+                    pendingEliminations.remove(victim.toLowerCase(java.util.Locale.ROOT));
+                }
+                try
+                {
+                    // Reveal the tile to everyone now that it has been triggered
+                    Set<String> everyone = new HashSet<>(java.util.Arrays.asList(
+                            "COMMANDER", "GUARD", "CONTESTANT"));
+                    gameService.markTile(triggeredTile.point, triggeredTile.label,
+                            triggeredTile.tileClass, everyone);
+                }
+                catch (Exception ex)
+                {
+                    log.warn("Landmine reveal failed", ex);
+                }
+            }, "skwid-landmine").start();
+        }
     }
 
     private void handleEnlist(MenuOptionClicked event)
@@ -599,6 +735,111 @@ public class SkwidGamesPlugin extends Plugin
                 chat("Failed to remove: " + e.getMessage());
             }
         }, "skwid-remove").start();
+    }
+
+    private void handleMarkTile()
+    {
+        Tile tile = client.getSelectedSceneTile();
+        if (tile == null) return;
+        WorldPoint wp = tile.getWorldLocation();
+
+        SwingUtilities.invokeLater(() ->
+        {
+            // --- Label ---
+            javax.swing.JTextField labelField = new javax.swing.JTextField(16);
+
+            // --- Tile class radio buttons ---
+            String[] classes = {"STANDARD", "LANDMINE", "SAFE_ZONE", "BOUNDARY"};
+            javax.swing.ButtonGroup classGroup = new javax.swing.ButtonGroup();
+            javax.swing.JRadioButton[] classButtons = new javax.swing.JRadioButton[classes.length];
+            javax.swing.JPanel classPanel = new javax.swing.JPanel();
+            for (int i = 0; i < classes.length; i++)
+            {
+                classButtons[i] = new javax.swing.JRadioButton(classes[i]);
+                classGroup.add(classButtons[i]);
+                classPanel.add(classButtons[i]);
+            }
+            classButtons[0].setSelected(true); // STANDARD default
+
+            // --- Visibility checkboxes ---
+            javax.swing.JCheckBox cbCommander  = new javax.swing.JCheckBox("Commander",  true);
+            javax.swing.JCheckBox cbGuard      = new javax.swing.JCheckBox("Guard",      true);
+            javax.swing.JCheckBox cbContestant = new javax.swing.JCheckBox("Contestant", true);
+            javax.swing.JPanel visPanel = new javax.swing.JPanel();
+            visPanel.add(cbCommander);
+            visPanel.add(cbGuard);
+            visPanel.add(cbContestant);
+
+            // --- Assemble panel ---
+            javax.swing.JPanel panel = new javax.swing.JPanel(new java.awt.GridLayout(0, 1, 4, 4));
+            panel.add(new javax.swing.JLabel("Label (optional):"));
+            panel.add(labelField);
+            panel.add(new javax.swing.JLabel("Class:"));
+            panel.add(classPanel);
+            panel.add(new javax.swing.JLabel("Visible to:"));
+            panel.add(visPanel);
+
+            int result = JOptionPane.showConfirmDialog(
+                    null, panel, "Mark Tile",
+                    JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+
+            if (result != JOptionPane.OK_OPTION) return;
+
+            // Collect values
+            String rawLabel = labelField.getText().trim();
+            final String finalLabel = rawLabel.isEmpty() ? null : rawLabel;
+
+            String selectedClass = "STANDARD";
+            for (int i = 0; i < classes.length; i++)
+            {
+                if (classButtons[i].isSelected())
+                {
+                    selectedClass = classes[i];
+                    break;
+                }
+            }
+            final String finalClass = selectedClass;
+
+            Set<String> visibleTo = new HashSet<>();
+            if (cbCommander.isSelected())  visibleTo.add("COMMANDER");
+            if (cbGuard.isSelected())      visibleTo.add("GUARD");
+            if (cbContestant.isSelected()) visibleTo.add("CONTESTANT");
+            // Empty set = visible to all (backward compat)
+            final Set<String> finalVisibleTo = visibleTo;
+
+            new Thread(() ->
+            {
+                try
+                {
+                    gameService.markTile(wp, finalLabel, finalClass, finalVisibleTo);
+                }
+                catch (Exception ex)
+                {
+                    chat("Failed to mark tile: " + ex.getMessage());
+                    log.warn("Failed to mark tile", ex);
+                }
+            }, "skwid-mark-tile").start();
+        });
+    }
+
+    private void handleUnmarkTile()
+    {
+        Tile tile = client.getSelectedSceneTile();
+        if (tile == null) return;
+        WorldPoint wp = tile.getWorldLocation();
+
+        new Thread(() ->
+        {
+            try
+            {
+                gameService.unmarkTile(wp);
+            }
+            catch (Exception ex)
+            {
+                chat("Failed to unmark tile: " + ex.getMessage());
+                log.warn("Failed to unmark tile", ex);
+            }
+        }, "skwid-unmark-tile").start();
     }
 
     private void chat(String msg)
