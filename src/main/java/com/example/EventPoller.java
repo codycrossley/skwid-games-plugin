@@ -48,7 +48,7 @@ public class EventPoller
         this.running = true;
 
         // Store the future so it can be cancelled later
-        scheduled = exec.scheduleAtFixedRate(this::tick, 0, 2, TimeUnit.SECONDS);
+        scheduled = exec.scheduleAtFixedRate(this::tick, 0, 500, TimeUnit.MILLISECONDS);
     }
 
     public synchronized void stop()

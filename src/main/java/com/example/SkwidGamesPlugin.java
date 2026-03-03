@@ -424,6 +424,18 @@ public class SkwidGamesPlugin extends Plugin
             try
             {
                 gameService.publishStoplightState(next);
+
+                // Apply state locally immediately — don't wait for the EventPoller round-trip.
+                // clientThread.invokeLater ensures player positions are read safely.
+                tileMarkerReducer.setStoplightState(next);
+                clientThread.invokeLater(() ->
+                {
+                    lastSeenStoplightState = next;
+                    if ("RED".equals(next))
+                    {
+                        eliminatePlayersOnStoplightTiles();
+                    }
+                });
             }
             catch (Exception ex)
             {
@@ -588,41 +600,7 @@ public class SkwidGamesPlugin extends Plugin
 
         if (stoplightJustTurnedRed)
         {
-            java.util.List<TileMarkerReducer.TileMarkerEntry> stoplights =
-                    tileMarkerReducer.snapshotStoplights();
-            if (!stoplights.isEmpty())
-            {
-                Set<WorldPoint> stoplightPoints = new HashSet<>();
-                for (TileMarkerReducer.TileMarkerEntry sl : stoplights)
-                {
-                    stoplightPoints.add(sl.point);
-                }
-
-                for (Player p : client.getPlayers())
-                {
-                    if (p == null || p.getName() == null) continue;
-                    String rsn = Text.toJagexName(p.getName());
-                    if (rsn == null || rsn.isBlank()) continue;
-                    if (rosterReducer.getRole(rsn) != PlayerRole.CONTESTANT) continue;
-                    if (rosterReducer.getStatus(rsn) == PlayerStatus.ELIMINATED) continue;
-                    if (pendingEliminations.contains(rsn.toLowerCase(java.util.Locale.ROOT))) continue;
-
-                    if (stoplightPoints.contains(p.getWorldLocation()))
-                    {
-                        pendingEliminations.add(rsn.toLowerCase(java.util.Locale.ROOT));
-                        final String victim = rsn;
-                        new Thread(() ->
-                        {
-                            try { gameService.eliminate(victim); }
-                            catch (Exception ex)
-                            {
-                                log.warn("Stoplight eliminate failed for {}", victim, ex);
-                                pendingEliminations.remove(victim.toLowerCase(java.util.Locale.ROOT));
-                            }
-                        }, "skwid-stoplight").start();
-                    }
-                }
-            }
+            eliminatePlayersOnStoplightTiles();
         }
 
         if (tileMarkerReducer.snapshotLandmines().isEmpty()) return;
@@ -668,6 +646,45 @@ public class SkwidGamesPlugin extends Plugin
                     log.warn("Landmine reveal failed", ex);
                 }
             }, "skwid-landmine").start();
+        }
+    }
+
+    /** Must be called on the client thread. Eliminates all contestants currently on STOPLIGHT tiles. */
+    private void eliminatePlayersOnStoplightTiles()
+    {
+        java.util.List<TileMarkerReducer.TileMarkerEntry> stoplights =
+                tileMarkerReducer.snapshotStoplights();
+        if (stoplights.isEmpty()) return;
+
+        Set<WorldPoint> stoplightPoints = new HashSet<>();
+        for (TileMarkerReducer.TileMarkerEntry sl : stoplights)
+        {
+            stoplightPoints.add(sl.point);
+        }
+
+        for (Player p : client.getPlayers())
+        {
+            if (p == null || p.getName() == null) continue;
+            String rsn = Text.toJagexName(p.getName());
+            if (rsn == null || rsn.isBlank()) continue;
+            if (rosterReducer.getRole(rsn) != PlayerRole.CONTESTANT) continue;
+            if (rosterReducer.getStatus(rsn) == PlayerStatus.ELIMINATED) continue;
+            if (pendingEliminations.contains(rsn.toLowerCase(java.util.Locale.ROOT))) continue;
+
+            if (stoplightPoints.contains(p.getWorldLocation()))
+            {
+                pendingEliminations.add(rsn.toLowerCase(java.util.Locale.ROOT));
+                final String victim = rsn;
+                new Thread(() ->
+                {
+                    try { gameService.eliminate(victim); }
+                    catch (Exception ex)
+                    {
+                        log.warn("Stoplight eliminate failed for {}", victim, ex);
+                        pendingEliminations.remove(victim.toLowerCase(java.util.Locale.ROOT));
+                    }
+                }, "skwid-stoplight").start();
+            }
         }
     }
 

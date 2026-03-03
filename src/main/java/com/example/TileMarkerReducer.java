@@ -44,6 +44,14 @@ public class TileMarkerReducer
         return stoplightState;
     }
 
+    public void setStoplightState(String state)
+    {
+        if ("RED".equalsIgnoreCase(state) || "GREEN".equalsIgnoreCase(state))
+        {
+            stoplightState = state.toUpperCase(Locale.ROOT);
+        }
+    }
+
     public void apply(RelayClient.EventOut e)
     {
         if (e == null || e.type == null) return;
