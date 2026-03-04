@@ -1,4 +1,4 @@
-package com.example;
+package gay.runescape;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;

@@ -1,4 +1,4 @@
-package com.example;
+package gay.runescape;
 
 import com.google.common.base.Strings;
 import com.google.inject.Inject;

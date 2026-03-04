@@ -1,4 +1,4 @@
-package com.example;
+package gay.runescape;
 
 import java.util.ArrayList;
 import java.util.Collections;

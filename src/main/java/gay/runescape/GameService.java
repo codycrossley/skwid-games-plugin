@@ -1,4 +1,4 @@
-package com.example;
+package gay.runescape;
 
 import lombok.RequiredArgsConstructor;
 import net.runelite.api.Client;

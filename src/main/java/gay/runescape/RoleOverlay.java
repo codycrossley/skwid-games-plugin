@@ -1,4 +1,4 @@
-package com.example;
+package gay.runescape;
 
 import javax.inject.Inject;
 import java.awt.*;

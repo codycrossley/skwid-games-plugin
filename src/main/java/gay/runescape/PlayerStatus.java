@@ -1,4 +1,4 @@
-package com.example;
+package gay.runescape;
 
 public enum PlayerStatus {
     ALIVE,

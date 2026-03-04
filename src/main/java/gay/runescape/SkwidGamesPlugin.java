@@ -1,4 +1,4 @@
-package com.example;
+package gay.runescape;
 
 import com.google.inject.Provides;
 import javax.inject.Inject;
@@ -20,9 +20,7 @@ import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.MenuOptionClicked;
 
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;

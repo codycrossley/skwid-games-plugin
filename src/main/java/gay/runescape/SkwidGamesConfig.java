@@ -1,4 +1,4 @@
-package com.example;
+package gay.runescape;
 
 import net.runelite.client.config.*;
 

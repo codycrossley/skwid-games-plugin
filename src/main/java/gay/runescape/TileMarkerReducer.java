@@ -1,4 +1,4 @@
-package com.example;
+package gay.runescape;
 
 import com.google.gson.JsonElement;
 import net.runelite.api.coords.WorldPoint;
