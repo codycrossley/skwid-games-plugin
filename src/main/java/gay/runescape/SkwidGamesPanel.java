@@ -87,6 +87,8 @@ public class SkwidGamesPanel extends PluginPanel
     private final JPanel rosterContainer = new JPanel(new BorderLayout());
     // Panel that will hold header + rows (inside its own scroll pane)
     private final JPanel rosterTablePanel = new JPanel();
+    /** Last rendered roster key — used to skip rebuilds when nothing changed. */
+    private String lastRosterKey = null;
 
     @Inject
     SkwidGamesPanel(final SkwidGamesPlugin plugin)
@@ -408,8 +410,32 @@ public class SkwidGamesPanel extends PluginPanel
 
     // ----- Roster helpers -----
 
+    private String buildRosterKey()
+    {
+        StringBuilder sb = new StringBuilder();
+        sb.append(plugin.getActiveGameId()).append('|');
+        sb.append(plugin.getCommander()).append('|');
+        sb.append(plugin.isLocalCommander()).append('|');
+        sb.append(plugin.isLocalGuard()).append('|');
+        java.util.List<RosterReducer.RosterEntry> entries = plugin.getRosterSnapshot();
+        if (entries != null)
+        {
+            for (RosterReducer.RosterEntry e : entries)
+            {
+                sb.append(e.rsn).append(':').append(e.role).append(':')
+                  .append(e.status).append(':').append(e.number).append(':')
+                  .append(e.joined).append(';');
+            }
+        }
+        return sb.toString();
+    }
+
     private void refreshRoster()
     {
+        String key = buildRosterKey();
+        if (key.equals(lastRosterKey)) return;
+        lastRosterKey = key;
+
         rosterTablePanel.removeAll();
 
         // Header row
