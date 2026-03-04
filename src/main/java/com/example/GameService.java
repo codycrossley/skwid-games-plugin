@@ -144,6 +144,11 @@ public class GameService
         return relay.fetchTiles(gameId);
     }
 
+    public RelayClient.RosterSnapshotResponse fetchRoster(String gameId) throws Exception
+    {
+        return relay.fetchRoster(gameId);
+    }
+
     public void publishStoplightState(String state) throws Exception
     {
         String gameId = requireActiveGameId();
@@ -333,6 +338,8 @@ public class GameService
         void publishTileUnmarked(String gameId, String writeKey, int x, int y, int plane) throws Exception;
 
         List<TileMarkerReducer.TileMarkerEntry> fetchTiles(String gameId) throws Exception;
+
+        RelayClient.RosterSnapshotResponse fetchRoster(String gameId) throws Exception;
 
         void publishStoplightState(String gameId, String writeKey, String state) throws Exception;
     }

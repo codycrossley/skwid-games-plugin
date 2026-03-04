@@ -18,6 +18,24 @@ public class RosterReducer
     private final ConcurrentHashMap<String, String> displayNameByPlayer = new ConcurrentHashMap<>();
     private final Set<String> joinedPlayers = ConcurrentHashMap.newKeySet();
 
+    public static final class SnapshotPlayer
+    {
+        public final String rsn;
+        public final String role;
+        public final Integer number;
+        public final String status;
+        public final boolean joined;
+
+        public SnapshotPlayer(String rsn, String role, Integer number, String status, boolean joined)
+        {
+            this.rsn    = rsn;
+            this.role   = role;
+            this.number = number;
+            this.status = status;
+            this.joined = joined;
+        }
+    }
+
     public static final class RosterEntry
     {
         public final String rsn;           // canonical RSN (lowercase or normalized)
@@ -83,6 +101,48 @@ public class RosterReducer
         statusByPlayer.clear();
         displayNameByPlayer.clear();
         joinedPlayers.clear();
+    }
+
+    public void loadSnapshot(List<SnapshotPlayer> players)
+    {
+        reset();
+        if (players == null) return;
+
+        for (SnapshotPlayer p : players)
+        {
+            if (p == null || p.rsn == null) continue;
+
+            final String key = canonicalKey(p.rsn);
+            if (key == null) continue;
+
+            displayNameByPlayer.put(key, displayName(p.rsn));
+
+            if (p.joined) joinedPlayers.add(key);
+
+            if (p.role != null)
+            {
+                try
+                {
+                    PlayerRole role = PlayerRole.valueOf(p.role.trim().toUpperCase(Locale.ROOT));
+                    roleByPlayer.put(key, role);
+
+                    if (isContestant(role) && p.number != null && p.number > 0)
+                    {
+                        numberByPlayer.put(key, p.number);
+                    }
+                }
+                catch (IllegalArgumentException ignored) { }
+            }
+
+            if (p.status != null)
+            {
+                try
+                {
+                    statusByPlayer.put(key, PlayerStatus.valueOf(p.status.trim().toUpperCase(Locale.ROOT)));
+                }
+                catch (IllegalArgumentException ignored) { }
+            }
+        }
     }
 
     public void apply(RelayClient.EventOut e)

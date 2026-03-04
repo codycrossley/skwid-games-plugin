@@ -40,11 +40,16 @@ public class EventPoller
 
     public synchronized void start(String gameId)
     {
+        start(gameId, 0);
+    }
+
+    public synchronized void start(String gameId, int initialSeq)
+    {
         // Restart safely
         stop();
 
         this.gameId = gameId;
-        this.lastSeq.set(0);
+        this.lastSeq.set(initialSeq);
         this.running = true;
 
         // Store the future so it can be cancelled later

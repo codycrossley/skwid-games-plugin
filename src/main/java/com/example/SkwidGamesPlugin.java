@@ -72,7 +72,7 @@ public class SkwidGamesPlugin extends Plugin
     {
         accountConfig = new AccountConfig(configManager, client);
 
-        relayClient = new RelayClient(config.relayBaseUrl());
+        relayClient = new RelayClient("https://skwid.runescape.gay");
         gameService = new GameService(client, accountConfig, relayClient);
         rosterReducer = new RosterReducer();
         tileMarkerReducer = new TileMarkerReducer();
@@ -304,7 +304,18 @@ public class SkwidGamesPlugin extends Plugin
                 String gameId = gameService.getActiveGameId();
                 if (poller != null && relayClient != null && relayClient.isEnabled())
                 {
-                    poller.start(gameId);
+                    int startSeq = 0;
+                    try
+                    {
+                        RelayClient.RosterSnapshotResponse snap = gameService.fetchRoster(gameId);
+                        rosterReducer.loadSnapshot(toSnapshotPlayers(snap.players));
+                        startSeq = snap.latestSeq;
+                    }
+                    catch (Exception ex)
+                    {
+                        log.debug("Roster snapshot unavailable, replaying from seq 0: {}", ex.getMessage());
+                    }
+                    poller.start(gameId, startSeq);
                     loadTilesAsync(gameId);
                 }
 
@@ -443,6 +454,19 @@ public class SkwidGamesPlugin extends Plugin
                 chat("Failed to toggle stoplight: " + ex.getMessage());
             }
         }, "skwid-stoplight-toggle").start();
+    }
+
+    private static java.util.List<RosterReducer.SnapshotPlayer> toSnapshotPlayers(
+            java.util.List<RelayClient.RosterPlayerOut> players)
+    {
+        java.util.List<RosterReducer.SnapshotPlayer> out = new java.util.ArrayList<>();
+        if (players == null) return out;
+        for (RelayClient.RosterPlayerOut p : players)
+        {
+            if (p == null) continue;
+            out.add(new RosterReducer.SnapshotPlayer(p.rsn, p.role, p.number, p.status, p.joined));
+        }
+        return out;
     }
 
     private void loadTilesAsync(String gameId)

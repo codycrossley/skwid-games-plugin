@@ -294,6 +294,36 @@ public class RelayClient implements GameService.RelayGateway
         }
     }
 
+    public RosterSnapshotResponse fetchRoster(String gameId) throws Exception
+    {
+        String url = baseUrl + "/v1/games/" + gameId + "/roster";
+
+        Request req = new Request.Builder()
+                .url(url)
+                .get()
+                .build();
+
+        try (Response resp = http.newCall(req).execute())
+        {
+            String respBody = resp.body() != null ? resp.body().string() : "";
+            if (!resp.isSuccessful())
+            {
+                throw new IOException("Fetch roster failed (" + resp.code() + "): " + respBody);
+            }
+
+            RosterSnapshotResponse parsed = gson.fromJson(respBody, RosterSnapshotResponse.class);
+            if (parsed == null)
+            {
+                throw new IOException("Fetch roster returned invalid response: " + respBody);
+            }
+            if (parsed.players == null)
+            {
+                parsed.players = Collections.emptyList();
+            }
+            return parsed;
+        }
+    }
+
     private void publishEvent(String gameId, String writeKey, String type, JsonObject payload) throws Exception
     {
         String url = baseUrl + "/v1/games/" + gameId + "/events";
@@ -403,6 +433,22 @@ public class RelayClient implements GameService.RelayGateway
         String markedBy;
         String tileClass;
         List<String> visibleTo;
+    }
+
+    public static class RosterSnapshotResponse
+    {
+        public String gameId;
+        public int latestSeq;
+        public java.util.List<RosterPlayerOut> players;
+    }
+
+    public static class RosterPlayerOut
+    {
+        public String rsn;
+        public String role;
+        public Integer number;
+        public String status;
+        public boolean joined;
     }
 
     // -------- small helpers --------
