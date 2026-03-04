@@ -19,7 +19,7 @@ public class TileMarkerReducer
         public final String label;
         public final String color;
         public final String markedBy;
-        /** One of: "STANDARD", "LANDMINE", "SAFE_ZONE", "BOUNDARY". Null treated as STANDARD. */
+        /** One of: "STANDARD", "LANDMINE", "STOPLIGHT". Null treated as STANDARD. */
         public final String tileClass;
         /** Roles that can see this tile. Empty set = visible to no one. */
         public final Set<String> visibleTo;

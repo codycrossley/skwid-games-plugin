@@ -124,8 +124,6 @@ public class GameService
         switch (tileClass.toUpperCase(Locale.ROOT))
         {
             case "LANDMINE":  return "#FF0000";
-            case "SAFE_ZONE": return "#00FF00";
-            case "BOUNDARY":  return "#0080FF";
             case "STOPLIGHT": return "#00FF00"; // starts green; overlay overrides dynamically
             default:          return "#FFFF00";
         }

@@ -425,24 +425,21 @@ public class SkwidGamesPlugin extends Plugin
         return tileMarkerReducer != null ? tileMarkerReducer.getStoplightState() : "GREEN";
     }
 
-    public void toggleStoplightFromPanel()
+    public void setStoplightFromPanel(String state)
     {
-        String current = getStoplightState();
-        String next = "RED".equals(current) ? "GREEN" : "RED";
-
         new Thread(() ->
         {
             try
             {
-                gameService.publishStoplightState(next);
+                gameService.publishStoplightState(state);
 
                 // Apply state locally immediately — don't wait for the EventPoller round-trip.
                 // clientThread.invokeLater ensures player positions are read safely.
-                tileMarkerReducer.setStoplightState(next);
+                tileMarkerReducer.setStoplightState(state);
                 clientThread.invokeLater(() ->
                 {
-                    lastSeenStoplightState = next;
-                    if ("RED".equals(next))
+                    lastSeenStoplightState = state;
+                    if ("RED".equals(state))
                     {
                         eliminatePlayersOnStoplightTiles();
                     }
@@ -451,7 +448,7 @@ public class SkwidGamesPlugin extends Plugin
             catch (Exception ex)
             {
                 log.warn("Failed to publish stoplight state: {}", ex.getMessage());
-                chat("Failed to toggle stoplight: " + ex.getMessage());
+                chat("Failed to set stoplight: " + ex.getMessage());
             }
         }, "skwid-stoplight-toggle").start();
     }
@@ -864,7 +861,7 @@ public class SkwidGamesPlugin extends Plugin
             javax.swing.JTextField labelField = new javax.swing.JTextField(16);
 
             // --- Tile class radio buttons ---
-            String[] classes = {"STANDARD", "LANDMINE", "SAFE_ZONE", "BOUNDARY", "STOPLIGHT"};
+            String[] classes = {"STANDARD", "LANDMINE", "STOPLIGHT"};
             javax.swing.ButtonGroup classGroup = new javax.swing.ButtonGroup();
             javax.swing.JRadioButton[] classButtons = new javax.swing.JRadioButton[classes.length];
             javax.swing.JPanel classPanel = new javax.swing.JPanel();

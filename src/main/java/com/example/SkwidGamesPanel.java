@@ -6,6 +6,7 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.GridLayout;
 import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.StringSelection;
@@ -15,10 +16,12 @@ import javax.inject.Singleton;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JToggleButton;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JSeparator;
@@ -67,10 +70,14 @@ public class SkwidGamesPanel extends PluginPanel
     private final JButton copyJoinCodeBtn = new JButton("Copy Join Code");
     private final JButton leaveBtn = new JButton("Leave Game");
     private final JButton endGameBtn = new JButton("End Game");
-    private final JButton stoplightBtn = new JButton("Red Light");
 
-    // ----- NEW: Roster UI components -----
-    // Container with titled border ("Roster")
+    // Stoplight section (commander-only, in scrollable content area)
+    private final JToggleButton redLightBtn = new JToggleButton("Red Light");
+    private final JToggleButton greenLightBtn = new JToggleButton("Green Light");
+    private final ButtonGroup stoplightGroup = new ButtonGroup();
+    private final JPanel stoplightSection = new JPanel(new BorderLayout());
+
+    // Roster UI components
     private final JPanel rosterContainer = new JPanel(new BorderLayout());
     // Panel that will hold header + rows (inside its own scroll pane)
     private final JPanel rosterTablePanel = new JPanel();
@@ -121,7 +128,10 @@ public class SkwidGamesPanel extends PluginPanel
         contentBase.setLayout(new DynamicGridLayout(0, 1, 0, GAP));
         contentBase.setBackground(ColorScheme.DARK_GRAY_COLOR);
 
-        // NEW: build roster container and add it to contentBase
+        // Build scrollable content sections
+        buildStoplightSection();
+        contentBase.add(stoplightSection);
+
         buildRosterContainer();
         contentBase.add(rosterContainer);
 
@@ -149,10 +159,11 @@ public class SkwidGamesPanel extends PluginPanel
         copyJoinCodeBtn.addActionListener(e -> copyToClipboard(joinCodeValueLabel.getText()));
         leaveBtn.addActionListener(e -> plugin.leaveGameFromPanel());
         endGameBtn.addActionListener(e -> plugin.endRoundFromPanel());
-        stoplightBtn.addActionListener(e -> plugin.toggleStoplightFromPanel());
+        redLightBtn.addActionListener(e -> plugin.setStoplightFromPanel("RED"));
+        greenLightBtn.addActionListener(e -> plugin.setStoplightFromPanel("GREEN"));
 
         // Uniform button styling
-        for (JButton btn : new JButton[]{createBtn, joinBtn, copyJoinCodeBtn, leaveBtn, endGameBtn, stoplightBtn})
+        for (JButton btn : new JButton[]{createBtn, joinBtn, copyJoinCodeBtn, leaveBtn, endGameBtn})
         {
             styleBtn(btn);
         }
@@ -160,6 +171,10 @@ public class SkwidGamesPanel extends PluginPanel
         // Per-button foreground overrides (applied after styleBtn so they win)
         leaveBtn.setForeground(new Color(214, 9, 65));
         endGameBtn.setForeground(new Color(214, 9, 65));
+
+        // Toggle buttons get their own styling with active-state backgrounds
+        styleToggleBtn(redLightBtn,   new Color(214, 9, 65),  new Color(90, 15, 15));
+        styleToggleBtn(greenLightBtn, new Color(0, 200, 0),   new Color(15, 70, 15));
 
         // IMPORTANT: do NOT call refreshState() here (plugin may not be initialized yet)
         // plugin should call panel.refreshState() in startUp() once services are ready.
@@ -226,10 +241,32 @@ public class SkwidGamesPanel extends PluginPanel
         p.add(leaveBtn);
 
         // Commander-only actions (visibility toggled in refreshState)
-        p.add(stoplightBtn);
         p.add(endGameBtn);
 
         return p;
+    }
+
+    private void buildStoplightSection()
+    {
+        TitledBorder border = BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(ColorScheme.MEDIUM_GRAY_COLOR), "Stoplight");
+        border.setTitleFont(FontManager.getRunescapeBoldFont());
+        border.setTitleColor(ColorScheme.BRAND_ORANGE);
+
+        stoplightSection.setOpaque(false);
+        stoplightSection.setBorder(border);
+
+        stoplightGroup.add(redLightBtn);
+        stoplightGroup.add(greenLightBtn);
+
+        JPanel btnRow = new JPanel(new GridLayout(1, 2, GAP, 0));
+        btnRow.setOpaque(false);
+        btnRow.setBorder(new EmptyBorder(4, 0, 4, 0));
+        btnRow.add(redLightBtn);
+        btnRow.add(greenLightBtn);
+
+        stoplightSection.add(btnRow, BorderLayout.CENTER);
+        stoplightSection.setVisible(false);
     }
 
     private void buildRosterContainer()
@@ -276,6 +313,36 @@ public class SkwidGamesPanel extends PluginPanel
                 btn.setBackground(ColorScheme.DARK_GRAY_COLOR);
             }
         });
+    }
+
+    private static void styleToggleBtn(JToggleButton btn, Color fg, Color selectedBg)
+    {
+        btn.setForeground(fg);
+        btn.setOpaque(true);
+        btn.setFocusPainted(false);
+        btn.setBorder(
+                BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(ColorScheme.MEDIUM_GRAY_COLOR, 1),
+                        BorderFactory.createEmptyBorder(5, 10, 5, 10)
+                )
+        );
+        btn.addChangeListener(e ->
+                btn.setBackground(btn.isSelected() ? selectedBg : ColorScheme.DARK_GRAY_COLOR));
+        btn.addMouseListener(new MouseAdapter()
+        {
+            @Override
+            public void mouseEntered(MouseEvent e)
+            {
+                if (!btn.isSelected()) btn.setBackground(ColorScheme.MEDIUM_GRAY_COLOR);
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e)
+            {
+                if (!btn.isSelected()) btn.setBackground(ColorScheme.DARK_GRAY_COLOR);
+            }
+        });
+        btn.setBackground(ColorScheme.DARK_GRAY_COLOR);
     }
 
     private void copyToClipboard(final String s)
@@ -529,21 +596,13 @@ public class SkwidGamesPanel extends PluginPanel
 
         boolean isCommander = plugin.isLocalCommander();
         endGameBtn.setVisible(isCommander);
-        stoplightBtn.setVisible(isCommander);
+        stoplightSection.setVisible(isCommander);
 
         if (isCommander)
         {
-            String stoplightState = plugin.getStoplightState();
-            if ("RED".equals(stoplightState))
-            {
-                stoplightBtn.setText("Green Light");
-                stoplightBtn.setForeground(new Color(0, 200, 0));
-            }
-            else
-            {
-                stoplightBtn.setText("Red Light");
-                stoplightBtn.setForeground(new Color(214, 9, 65));
-            }
+            boolean isRed = "RED".equals(plugin.getStoplightState());
+            redLightBtn.setSelected(isRed);
+            greenLightBtn.setSelected(!isRed);
         }
 
         // When in game, render roster for current game
@@ -553,7 +612,7 @@ public class SkwidGamesPanel extends PluginPanel
     public void showGameEnded()
     {
         endGameBtn.setVisible(false);
-        stoplightBtn.setVisible(false);
+        stoplightSection.setVisible(false);
         statusPill.setText("Ended");
         statusPill.setBackground(new Color(120, 30, 30));
         statusPill.setForeground(Color.WHITE);

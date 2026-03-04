@@ -25,8 +25,6 @@ public class SharedTileOverlay extends Overlay
     private static final Color DEFAULT_BORDER       = new Color(255, 255,   0, 200); // yellow
     private static final Color COLOR_STANDARD       = new Color(255, 255,   0, 200); // yellow
     private static final Color COLOR_LANDMINE       = new Color(255,   0,   0, 200); // red
-    private static final Color COLOR_SAFE_ZONE      = new Color(  0, 255,   0, 200); // green
-    private static final Color COLOR_BOUNDARY       = new Color(  0, 128, 255, 200); // blue
     private static final Color COLOR_STOPLIGHT_RED  = new Color(255,   0,   0, 200); // red
     private static final Color COLOR_STOPLIGHT_GREEN = new Color(  0, 255,   0, 200); // green
 
@@ -155,8 +153,6 @@ public class SharedTileOverlay extends Overlay
         switch (tileClass.toUpperCase())
         {
             case "LANDMINE":  return COLOR_LANDMINE;
-            case "SAFE_ZONE": return COLOR_SAFE_ZONE;
-            case "BOUNDARY":  return COLOR_BOUNDARY;
             case "STOPLIGHT":
                 return "RED".equals(tileMarkers.getStoplightState())
                         ? COLOR_STOPLIGHT_RED : COLOR_STOPLIGHT_GREEN;
