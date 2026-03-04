@@ -14,7 +14,6 @@ import net.runelite.api.MenuEntry;
 import net.runelite.api.Player;
 import net.runelite.api.Tile;
 import net.runelite.api.coords.WorldPoint;
-import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
@@ -110,7 +109,7 @@ public class SkwidGamesPlugin extends Plugin
             }
         });
 
-        menuManager.addPlayerMenuItem("Enlist…");
+        menuManager.addPlayerMenuItem("Enlist");
         roleOverlay = new RoleOverlay(client, config, gameService, rosterReducer);
         overlayManager.add(roleOverlay);
         tileOverlay = new SharedTileOverlay(client, config, gameService, tileMarkerReducer, rosterReducer);
@@ -149,7 +148,7 @@ public class SkwidGamesPlugin extends Plugin
     @Override
     protected void shutDown()
     {
-        menuManager.removePlayerMenuItem("Enlist…");
+        menuManager.removePlayerMenuItem("Enlist");
 
         if (navButton != null)
         {
@@ -538,13 +537,26 @@ public class SkwidGamesPlugin extends Plugin
     @Subscribe
     public void onMenuEntryAdded(MenuEntryAdded e)
     {
+        // Hide "Enlist" unless the local player is a commander with an active game
+        if ("Enlist".equals(e.getOption()))
+        {
+            boolean commanderActive = gameService != null
+                    && gameService.isLocalCommander()
+                    && gameService.getActiveGameId() != null
+                    && !gameService.getActiveGameId().isBlank();
+            if (!commanderActive)
+            {
+                MenuEntry[] entries = client.getMenuEntries();
+                client.setMenuEntries(java.util.Arrays.copyOf(entries, entries.length - 1));
+            }
+            return;
+        }
+
         // Option is the verb ("Walk here", "Trade", etc.)
         if ("Enamour".equals(e.getOption()))
         {
             client.getMenuEntries()[client.getMenuEntries().length - 1].setOption("Eliminate");
         }
-
-        replaceMenuTargetWithNumber();
 
         // Tile marking: inject when Commander shift+right-clicks the ground
         if ("Walk here".equals(e.getOption())
@@ -557,7 +569,7 @@ public class SkwidGamesPlugin extends Plugin
             {
                 WorldPoint wp = selectedTile.getWorldLocation();
                 boolean alreadyMarked = tileMarkerReducer.getMarker(wp) != null;
-                String label = alreadyMarked ? "Unmark tile" : "Mark tile";
+                String label = alreadyMarked ? "Unmark tile" : "Configure tile";
                 client.createMenuEntry(-1)
                         .setOption(label)
                         .setTarget("")
@@ -565,39 +577,6 @@ public class SkwidGamesPlugin extends Plugin
                         .setDeprioritized(false);
             }
         }
-    }
-
-    /**
-     * If the menu entry's target is a contestant with an assigned number,
-     * replaces their RSN with "Player 001" (etc.) in the displayed menu.
-     */
-    private void replaceMenuTargetWithNumber()
-    {
-        if (gameService == null || rosterReducer == null) return;
-        if (gameService.getActiveGameId() == null || gameService.getActiveGameId().isBlank()) return;
-
-        // Grab the MenuEntry directly — consistent with how the Enamour rename works,
-        // and avoids relying on any deprecated MenuEntryAdded convenience getters.
-        MenuEntry entry = client.getMenuEntries()[client.getMenuEntries().length - 1];
-
-        // Strip all markup to get the raw display text (e.g. "PlayerName(level-126)")
-        String rawTarget = Text.removeTags(entry.getTarget());
-        if (rawTarget == null || rawTarget.isBlank()) return;
-
-        // Isolate the RSN by removing the level annotation
-        String nameOnly = rawTarget.replaceFirst("\\s*\\(level\\s*-?\\s*\\d+\\)\\s*$", "").trim();
-        String canonical = Text.toJagexName(nameOnly);
-        if (canonical == null || canonical.isBlank()) return;
-
-        Integer number = rosterReducer.getNumber(canonical);
-        if (number == null) return;
-
-        String label = "Player " + String.format("%03d", number);
-
-        // Replace only the bare name in the original target, preserving any color
-        // tags and the level annotation (e.g. <col=ffff00>PlayerName</col>(level-126)
-        // becomes <col=ffff00>Player 001</col>(level-126)).
-        entry.setTarget(entry.getTarget().replace(nameOnly, label));
     }
 
     @Subscribe
@@ -617,14 +596,14 @@ public class SkwidGamesPlugin extends Plugin
         }
 
         // Existing: enlist path
-        if ("Enlist…".equalsIgnoreCase(opt) || "Enlist...".equalsIgnoreCase(opt))
+        if ("Enlist".equalsIgnoreCase(opt))
         {
             handleEnlist(event);
             return;
         }
 
         // Tile marking
-        if ("Mark tile".equalsIgnoreCase(opt))
+        if ("Configure tile".equalsIgnoreCase(opt))
         {
             handleMarkTile();
             return;
@@ -634,24 +613,6 @@ public class SkwidGamesPlugin extends Plugin
         {
             handleUnmarkTile();
         }
-    }
-
-    @Subscribe
-    public void onChatMessage(ChatMessage event)
-    {
-        if (gameService == null || rosterReducer == null) return;
-        if (gameService.getActiveGameId() == null || gameService.getActiveGameId().isBlank()) return;
-
-        String rawName = Text.removeTags(event.getName());
-        if (rawName == null || rawName.isBlank()) return;
-
-        String canonical = Text.toJagexName(rawName);
-        if (canonical == null || canonical.isBlank()) return;
-
-        Integer number = rosterReducer.getNumber(canonical);
-        if (number == null) return;
-
-        event.getMessageNode().setName("(" + String.format("%03d", number) + ") " + canonical);
     }
 
     @Subscribe
@@ -940,7 +901,7 @@ public class SkwidGamesPlugin extends Plugin
             panel.add(visPanel);
 
             int result = JOptionPane.showConfirmDialog(
-                    null, panel, "Mark Tile",
+                    null, panel, "Configure Tile",
                     JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
 
             if (result != JOptionPane.OK_OPTION) return;
@@ -1008,31 +969,9 @@ public class SkwidGamesPlugin extends Plugin
                 client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", msg, null));
     }
 
-    /**
-     * Canonicalizes a raw menu target and, if it has been rewritten to "Player ###" form,
-     * reverse-looks up the real RSN from the roster.
-     */
     private String resolveMenuTarget(String menuTarget)
     {
-        String target = canonicalizeMenuTarget(menuTarget);
-        if (target == null || target.isBlank()) return target;
-
-        java.util.regex.Matcher m = java.util.regex.Pattern
-                .compile("(?i)^player\\s+(\\d+)$")
-                .matcher(target.trim());
-        if (m.matches())
-        {
-            int number = Integer.parseInt(m.group(1));
-            String resolved = rosterReducer.getRsnByNumber(number);
-            if (resolved == null)
-            {
-                chat("Could not resolve player name from number " + number + ".");
-                return null;
-            }
-            return resolved;
-        }
-
-        return target;
+        return canonicalizeMenuTarget(menuTarget);
     }
 
     private static String canonicalizeMenuTarget(String menuTarget)
