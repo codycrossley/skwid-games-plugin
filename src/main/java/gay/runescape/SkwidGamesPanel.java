@@ -406,7 +406,7 @@ public class SkwidGamesPanel extends PluginPanel
         joinCodeValueLabel.setText(Strings.isNullOrEmpty(joinCode) ? "—" : joinCode);
     }
 
-    // ----- NEW: roster helpers -----
+    // ----- Roster helpers -----
 
     private void refreshRoster()
     {

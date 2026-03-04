@@ -21,6 +21,8 @@ import net.runelite.api.events.MenuOptionClicked;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -55,6 +57,7 @@ public class SkwidGamesPlugin extends Plugin
     private SharedTileOverlay tileOverlay;
     /** RSNs (lowercase) for which the Commander has published an elimination this session. */
     private final Set<String> pendingEliminations = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private ExecutorService executor;
     /** Tracks the last seen stoplight state to detect RED transitions for elimination. */
     private String lastSeenStoplightState = "GREEN";
 
@@ -67,6 +70,7 @@ public class SkwidGamesPlugin extends Plugin
     @Override
     protected void startUp()
     {
+        executor = Executors.newFixedThreadPool(2);
         accountConfig = new AccountConfig(configManager, client);
 
         relayClient = new RelayClient("https://skwid.runescape.gay");
@@ -159,6 +163,7 @@ public class SkwidGamesPlugin extends Plugin
         if (roleOverlay != null) overlayManager.remove(roleOverlay);
         if (tileOverlay != null) overlayManager.remove(tileOverlay);
         if (poller != null) poller.shutdown();
+        if (executor != null) executor.shutdownNow();
     }
 
     @Subscribe
@@ -240,7 +245,7 @@ public class SkwidGamesPlugin extends Plugin
             gameService.clearActiveGameLocally();
         }
 
-        new Thread(() ->
+        executor.execute(() ->
         {
             try
             {
@@ -265,7 +270,7 @@ public class SkwidGamesPlugin extends Plugin
                 log.warn("Failed to start game", e);
                 chat("Failed to start game: " + e.getMessage());
             }
-        }, "skwid-create-game").start();
+        });
     }
 
     public void joinGameFromPanel(String joinCode)
@@ -292,7 +297,7 @@ public class SkwidGamesPlugin extends Plugin
             gameService.clearActiveGameLocally();
         }
 
-        new Thread(() ->
+        executor.execute(() ->
         {
             try
             {
@@ -324,7 +329,7 @@ public class SkwidGamesPlugin extends Plugin
                 chat("Failed to join game: " + e.getMessage());
                 SwingUtilities.invokeLater(panel::refreshState);
             }
-        }, "skwid-join-game").start();
+        });
     }
 
     public void endRoundFromPanel()
@@ -340,7 +345,7 @@ public class SkwidGamesPlugin extends Plugin
             );
             if (res != JOptionPane.YES_OPTION) return;
 
-            new Thread(() ->
+            executor.execute(() ->
             {
                 try
                 {
@@ -354,7 +359,7 @@ public class SkwidGamesPlugin extends Plugin
                     log.warn("Failed to end game", e);
                     chat("Failed to end game: " + e.getMessage());
                 }
-            }, "skwid-end-game").start();
+            });
         });
     }
 
@@ -365,7 +370,7 @@ public class SkwidGamesPlugin extends Plugin
         gameService.clearActiveGameLocally();
         panel.refreshState();
 
-        new Thread(() ->
+        executor.execute(() ->
         {
             try
             {
@@ -376,7 +381,7 @@ public class SkwidGamesPlugin extends Plugin
             {
                 log.warn("Failed to notify relay of LEFT event", e);
             }
-        }, "skwid-leave-game").start();
+        });
     }
 
     private void resetLocalGameState()
@@ -427,7 +432,7 @@ public class SkwidGamesPlugin extends Plugin
     public void eliminateFromPanel(String rsn)
     {
         boolean isCommander = gameService.isLocalCommander();
-        new Thread(() ->
+        executor.execute(() ->
         {
             try
             {
@@ -440,7 +445,7 @@ public class SkwidGamesPlugin extends Plugin
                 chat("Failed to eliminate " + rsn + ": " + ex.getMessage());
                 log.warn("Failed to eliminate {}", rsn, ex);
             }
-        }, "skwid-eliminate").start();
+        });
     }
 
     public void removeFromPanel(String rsn)
@@ -451,7 +456,7 @@ public class SkwidGamesPlugin extends Plugin
     public void reviveFromPanel(String rsn)
     {
         boolean isCommander = gameService.isLocalCommander();
-        new Thread(() ->
+        executor.execute(() ->
         {
             try
             {
@@ -464,7 +469,7 @@ public class SkwidGamesPlugin extends Plugin
                 chat("Failed to revive " + rsn + ": " + ex.getMessage());
                 log.warn("Failed to revive {}", rsn, ex);
             }
-        }, "skwid-revive").start();
+        });
     }
 
     public String getStoplightState()
@@ -474,7 +479,7 @@ public class SkwidGamesPlugin extends Plugin
 
     public void setStoplightFromPanel(String state)
     {
-        new Thread(() ->
+        executor.execute(() ->
         {
             try
             {
@@ -497,7 +502,7 @@ public class SkwidGamesPlugin extends Plugin
                 log.warn("Failed to publish stoplight state: {}", ex.getMessage());
                 chat("Failed to set stoplight: " + ex.getMessage());
             }
-        }, "skwid-stoplight-toggle").start();
+        });
     }
 
     private static java.util.List<RosterReducer.SnapshotPlayer> toSnapshotPlayers(
@@ -515,7 +520,7 @@ public class SkwidGamesPlugin extends Plugin
 
     private void loadTilesAsync(String gameId)
     {
-        new Thread(() ->
+        executor.execute(() ->
         {
             try
             {
@@ -527,7 +532,7 @@ public class SkwidGamesPlugin extends Plugin
             {
                 log.debug("Failed to fetch tiles: {}", ex.getMessage());
             }
-        }, "skwid-fetch-tiles").start();
+        });
     }
 
     // -------------------------------------------------------------------------
@@ -652,7 +657,7 @@ public class SkwidGamesPlugin extends Plugin
             pendingEliminations.add(rsn.toLowerCase(java.util.Locale.ROOT));
             final String victim = rsn;
             final TileMarkerReducer.TileMarkerEntry triggeredTile = landmine;
-            new Thread(() ->
+            executor.execute(() ->
             {
                 try
                 {
@@ -675,7 +680,7 @@ public class SkwidGamesPlugin extends Plugin
                 {
                     log.warn("Landmine reveal failed", ex);
                 }
-            }, "skwid-landmine").start();
+            });
         }
     }
 
@@ -705,7 +710,7 @@ public class SkwidGamesPlugin extends Plugin
             {
                 pendingEliminations.add(rsn.toLowerCase(java.util.Locale.ROOT));
                 final String victim = rsn;
-                new Thread(() ->
+                executor.execute(() ->
                 {
                     try { gameService.eliminate(victim); }
                     catch (Exception ex)
@@ -713,7 +718,7 @@ public class SkwidGamesPlugin extends Plugin
                         log.warn("Stoplight eliminate failed for {}", victim, ex);
                         pendingEliminations.remove(victim.toLowerCase(java.util.Locale.ROOT));
                     }
-                }, "skwid-stoplight").start();
+                });
             }
         }
     }
@@ -804,7 +809,7 @@ public class SkwidGamesPlugin extends Plugin
             return;
         }
 
-        new Thread(() ->
+        executor.execute(() ->
         {
             try
             {
@@ -823,12 +828,12 @@ public class SkwidGamesPlugin extends Plugin
                 chat("Failed to eliminate " + target + ": " + ex.getMessage());
                 log.warn("Failed to eliminate {}", target, ex);
             }
-        }, "skwid-eliminate").start();
+        });
     }
 
     private void enlist(String target, PlayerRole playerRole)
     {
-        new Thread(() ->
+        executor.execute(() ->
         {
             try
             {
@@ -839,12 +844,12 @@ public class SkwidGamesPlugin extends Plugin
             {
                 chat("Failed to enlist: " + e.getMessage());
             }
-        }, "skwid-enlist").start();
+        });
     }
 
     private void remove(String target)
     {
-        new Thread(() ->
+        executor.execute(() ->
         {
             try
             {
@@ -855,7 +860,7 @@ public class SkwidGamesPlugin extends Plugin
             {
                 chat("Failed to remove: " + e.getMessage());
             }
-        }, "skwid-remove").start();
+        });
     }
 
     private void handleMarkTile()
@@ -925,10 +930,9 @@ public class SkwidGamesPlugin extends Plugin
             if (cbCommander.isSelected())  visibleTo.add("COMMANDER");
             if (cbGuard.isSelected())      visibleTo.add("GUARD");
             if (cbContestant.isSelected()) visibleTo.add("CONTESTANT");
-            // Empty set = visible to all (backward compat)
             final Set<String> finalVisibleTo = visibleTo;
 
-            new Thread(() ->
+            executor.execute(() ->
             {
                 try
                 {
@@ -936,10 +940,10 @@ public class SkwidGamesPlugin extends Plugin
                 }
                 catch (Exception ex)
                 {
-                    chat("Failed to mark tile: " + ex.getMessage());
-                    log.warn("Failed to mark tile", ex);
+                    chat("Failed to configure tile: " + ex.getMessage());
+                    log.warn("Failed to configure tile", ex);
                 }
-            }, "skwid-mark-tile").start();
+            });
         });
     }
 
@@ -949,7 +953,7 @@ public class SkwidGamesPlugin extends Plugin
         if (tile == null) return;
         WorldPoint wp = tile.getWorldLocation();
 
-        new Thread(() ->
+        executor.execute(() ->
         {
             try
             {
@@ -960,7 +964,7 @@ public class SkwidGamesPlugin extends Plugin
                 chat("Failed to unmark tile: " + ex.getMessage());
                 log.warn("Failed to unmark tile", ex);
             }
-        }, "skwid-unmark-tile").start();
+        });
     }
 
     private void chat(String msg)
