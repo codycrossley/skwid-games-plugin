@@ -49,6 +49,12 @@ public class SkwidGamesPanel extends PluginPanel
 
     private final SkwidGamesPlugin plugin;
 
+    // Tab navigation
+    private final JLabel navHomeLabel = new JLabel("Home");
+    private final JLabel navHelpLabel = new JLabel("Help");
+    private final java.awt.CardLayout tabCardLayout = new java.awt.CardLayout();
+    private final JPanel tabCardPanel = new JPanel(tabCardLayout);
+
     // Top header + status
     private final JLabel titleLabel = new JLabel("Skwid Games");
     private final JLabel statusPill = new JLabel("Disconnected");
@@ -120,7 +126,8 @@ public class SkwidGamesPanel extends PluginPanel
         cardPanel.add(buildInGameCard(), ViewState.IN_GAME.name());
         topPanel.add(cardPanel);
 
-        add(topPanel, BorderLayout.NORTH);
+        final JPanel homePanel = new JPanel(new BorderLayout());
+        homePanel.add(topPanel, BorderLayout.NORTH);
 
         // ----- Scrollable content area (anchored north) -----
         final JPanel contentBase = new JPanel();
@@ -142,7 +149,35 @@ public class SkwidGamesPanel extends PluginPanel
         final JScrollPane scrollPane = new JScrollPane(northAnchor);
         scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
-        add(scrollPane, BorderLayout.CENTER);
+        homePanel.add(scrollPane, BorderLayout.CENTER);
+
+        // Tabbed navigation
+        final JPanel navBar = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
+        navBar.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+        navBar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, ColorScheme.MEDIUM_GRAY_COLOR),
+                new EmptyBorder(6, BORDER, 6, BORDER)));
+        styleNavLabel(navHomeLabel, true);
+        styleNavLabel(navHelpLabel, false);
+        navBar.add(navHomeLabel);
+        navBar.add(Box.createHorizontalStrut(16));
+        navBar.add(navHelpLabel);
+        navHomeLabel.addMouseListener(new MouseAdapter()
+        {
+            @Override public void mouseClicked(MouseEvent e) { switchTab("HOME"); }
+        });
+        navHelpLabel.addMouseListener(new MouseAdapter()
+        {
+            @Override public void mouseClicked(MouseEvent e) { switchTab("HELP"); }
+        });
+
+        tabCardPanel.add(homePanel, "HOME");
+        tabCardPanel.add(buildHelpPanel(), "HELP");
+
+        final JPanel outer = new JPanel(new BorderLayout());
+        outer.add(navBar, BorderLayout.NORTH);
+        outer.add(tabCardPanel, BorderLayout.CENTER);
+        add(outer, BorderLayout.CENTER);
 
         // Wire actions
         createBtn.addActionListener(e -> plugin.startGameFromPanel());
@@ -173,8 +208,8 @@ public class SkwidGamesPanel extends PluginPanel
         endGameBtn.setForeground(new Color(214, 9, 65));
 
         // Toggle buttons get their own styling with active-state backgrounds
-        styleToggleBtn(redLightBtn,   new Color(214, 9, 65),  new Color(90, 15, 15));
-        styleToggleBtn(greenLightBtn, new Color(0, 200, 0),   new Color(15, 70, 15));
+        styleToggleBtn(redLightBtn,   new Color(214, 9, 65),  new Color(180, 30, 30),  Color.WHITE);
+        styleToggleBtn(greenLightBtn, new Color(0, 200, 0),   new Color(30, 160, 30),  Color.WHITE);
 
         // IMPORTANT: do NOT call refreshState() here (plugin may not be initialized yet)
         // plugin should call panel.refreshState() in startUp() once services are ready.
@@ -315,9 +350,10 @@ public class SkwidGamesPanel extends PluginPanel
         });
     }
 
-    private static void styleToggleBtn(JToggleButton btn, Color fg, Color selectedBg)
+    private static void styleToggleBtn(JToggleButton btn, Color inactiveFg, Color selectedBg, Color selectedFg)
     {
-        btn.setForeground(fg);
+        btn.setUI(new javax.swing.plaf.basic.BasicToggleButtonUI());
+        btn.setForeground(inactiveFg);
         btn.setOpaque(true);
         btn.setFocusPainted(false);
         btn.setBorder(
@@ -327,7 +363,10 @@ public class SkwidGamesPanel extends PluginPanel
                 )
         );
         btn.addChangeListener(e ->
-                btn.setBackground(btn.isSelected() ? selectedBg : ColorScheme.DARK_GRAY_COLOR));
+        {
+            btn.setBackground(btn.isSelected() ? selectedBg : ColorScheme.DARK_GRAY_COLOR);
+            btn.setForeground(btn.isSelected() ? selectedFg : inactiveFg);
+        });
         btn.addMouseListener(new MouseAdapter()
         {
             @Override
@@ -407,6 +446,7 @@ public class SkwidGamesPanel extends PluginPanel
 
         final String commanderRsn = plugin.getCommander();
         boolean isCommander = plugin.isLocalCommander();
+        boolean isGuard = plugin.isLocalGuard();
         int rowIndex = 0;
 
         // Commander always at top
@@ -435,7 +475,7 @@ public class SkwidGamesPanel extends PluginPanel
         {
             for (RosterReducer.RosterEntry entry : filtered)
             {
-                rosterTablePanel.add(buildRosterRow(entry, isCommander, rowIndex++));
+                rosterTablePanel.add(buildRosterRow(entry, isCommander, isGuard, rowIndex++));
             }
         }
 
@@ -492,7 +532,7 @@ public class SkwidGamesPanel extends PluginPanel
         return row;
     }
 
-    private JPanel buildRosterRow(RosterReducer.RosterEntry e, boolean isCommander, int rowIndex)
+    private JPanel buildRosterRow(RosterReducer.RosterEntry e, boolean isCommander, boolean isGuard, int rowIndex)
     {
         JPanel row = new JPanel(new GridBagLayout());
         row.setBackground(rowIndex % 2 == 0 ? ColorScheme.DARK_GRAY_COLOR : ColorScheme.DARKER_GRAY_COLOR);
@@ -509,7 +549,7 @@ public class SkwidGamesPanel extends PluginPanel
         c.gridx = 0; c.weightx = 0.55;
         row.add(rsnLabel, c);
 
-        String numText = e.number != null ? String.valueOf(e.number) : "—";
+        String numText = e.number != null ? String.format("%03d", e.number) : "—";
         JLabel numberLabel = new JLabel(numText);
         numberLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
         numberLabel.setFont(FontManager.getRunescapeSmallFont());
@@ -521,6 +561,47 @@ public class SkwidGamesPanel extends PluginPanel
         statusLabel.setFont(FontManager.getRunescapeSmallFont());
         c.gridx = 2; c.weightx = 0.30;
         row.add(statusLabel, c);
+
+        // Right-click popup for commander / guard actions on contestants
+        boolean aliveContestant = e.role == PlayerRole.CONTESTANT
+                && e.status != PlayerStatus.ELIMINATED;
+        boolean eliminatedContestant = e.role == PlayerRole.CONTESTANT
+                && e.status == PlayerStatus.ELIMINATED;
+        boolean canEliminate = aliveContestant && (isCommander || isGuard);
+        boolean canRevive    = eliminatedContestant && (isCommander || isGuard);
+        boolean canRemove    = isCommander && e.role != PlayerRole.REMOVED;
+
+        if (canEliminate || canRevive || canRemove)
+        {
+            JPopupMenu popup = new JPopupMenu();
+            if (canEliminate)
+            {
+                JMenuItem eliminateItem = new JMenuItem("Eliminate");
+                eliminateItem.addActionListener(ev -> plugin.eliminateFromPanel(e.rsn));
+                popup.add(eliminateItem);
+            }
+            if (canRevive)
+            {
+                JMenuItem reviveItem = new JMenuItem("Revive");
+                reviveItem.addActionListener(ev -> plugin.reviveFromPanel(e.rsn));
+                popup.add(reviveItem);
+            }
+            if (canRemove)
+            {
+                JMenuItem removeItem = new JMenuItem("Remove");
+                removeItem.addActionListener(ev -> plugin.removeFromPanel(e.rsn));
+                popup.add(removeItem);
+            }
+            row.setComponentPopupMenu(popup);
+            for (java.awt.Component child : row.getComponents())
+            {
+                if (child instanceof JLabel)
+                {
+                    ((JLabel) child).setComponentPopupMenu(popup);
+                }
+            }
+            row.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+        }
 
         return row;
     }
@@ -639,5 +720,72 @@ public class SkwidGamesPanel extends PluginPanel
         statusPill.setText("In Game");
         statusPill.setBackground(ColorScheme.PROGRESS_COMPLETE_COLOR);
         statusPill.setForeground(ColorScheme.DARKER_GRAY_COLOR);
+    }
+
+    private void styleNavLabel(JLabel lbl, boolean active)
+    {
+        lbl.setFont(active ? FontManager.getRunescapeBoldFont() : FontManager.getRunescapeSmallFont());
+        lbl.setForeground(active ? Color.WHITE : ColorScheme.MEDIUM_GRAY_COLOR);
+        lbl.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+    }
+
+    private void switchTab(String name)
+    {
+        tabCardLayout.show(tabCardPanel, name);
+        styleNavLabel(navHomeLabel, "HOME".equals(name));
+        styleNavLabel(navHelpLabel, "HELP".equals(name));
+    }
+
+    private JPanel buildHelpPanel()
+    {
+        final JPanel p = new JPanel();
+        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
+        p.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        p.setBorder(new EmptyBorder(BORDER, BORDER, BORDER, BORDER));
+
+        addHelpSection(p, "Getting Started",
+                "Create a game from the Home tab and share the Join Code with participants, "
+                + "or enter a code to join an existing game.");
+
+        addHelpSection(p, "Assigning Roles",
+                "If you are the commander of a game, you can right-click any player "
+                + "in-game and select <b>Enlist</b> to assign them "
+                + "as a Guard or Contestant, or to remove them from the game.");
+
+        addHelpSection(p, "Tile Markers",
+                "As Commander, hold <b>Shift</b> and right-click any ground tile to mark it. "
+                        + "There are three types of tyles<br><br>"
+                + "<b>Standard</b>: Purely cosmetic<br>"
+                + "<b>Landmine</b>: Auto-eliminates contestants who step on it<br>"
+                + "<b>Stoplight</b>: Controlled by the Red Light / Green Light button");
+
+        addHelpSection(p, "Red Light / Green Light",
+                "Use the Stoplight toggle on the Home tab. Contestants standing on "
+                + "Stoplight tiles are eliminated the moment Red Light is activated.");
+
+        addHelpSection(p, "Elimination",
+                "Guards and the Commander can eliminate players by wielding a <b>Love Crossbow</b>."
+                + " and clicking <b>Eliminate</b> on any Contestant in-game.");
+
+        p.add(Box.createVerticalGlue());
+        return p;
+    }
+
+    private static void addHelpSection(JPanel parent, String title, String body)
+    {
+        final JLabel titleLbl = new JLabel(title);
+        titleLbl.setForeground(ColorScheme.BRAND_ORANGE);
+        titleLbl.setFont(FontManager.getRunescapeBoldFont());
+        titleLbl.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        parent.add(titleLbl);
+        parent.add(Box.createVerticalStrut(3));
+
+        final JLabel bodyLbl = new JLabel(
+                "<html><body style='width:180px'>" + body + "</body></html>");
+        bodyLbl.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+        bodyLbl.setFont(FontManager.getRunescapeSmallFont());
+        bodyLbl.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        parent.add(bodyLbl);
+        parent.add(Box.createVerticalStrut(12));
     }
 }

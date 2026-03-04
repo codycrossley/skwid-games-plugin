@@ -418,6 +418,56 @@ public class SkwidGamesPlugin extends Plugin
         return gameService.isLocalCommander();
     }
 
+    public boolean isLocalGuard()
+    {
+        if (rosterReducer == null || client.getLocalPlayer() == null) return false;
+        String localName = net.runelite.client.util.Text.toJagexName(client.getLocalPlayer().getName());
+        return localName != null && rosterReducer.getRole(localName) == PlayerRole.GUARD;
+    }
+
+    public void eliminateFromPanel(String rsn)
+    {
+        boolean isCommander = gameService.isLocalCommander();
+        new Thread(() ->
+        {
+            try
+            {
+                if (isCommander) gameService.eliminate(rsn);
+                else             gameService.eliminateAsGuard(rsn);
+                chat("Eliminated " + rsn + ".");
+            }
+            catch (Exception ex)
+            {
+                chat("Failed to eliminate " + rsn + ": " + ex.getMessage());
+                log.warn("Failed to eliminate {}", rsn, ex);
+            }
+        }, "skwid-eliminate").start();
+    }
+
+    public void removeFromPanel(String rsn)
+    {
+        remove(rsn);
+    }
+
+    public void reviveFromPanel(String rsn)
+    {
+        boolean isCommander = gameService.isLocalCommander();
+        new Thread(() ->
+        {
+            try
+            {
+                if (isCommander) gameService.revive(rsn);
+                else             gameService.reviveAsGuard(rsn);
+                chat("Revived " + rsn + ".");
+            }
+            catch (Exception ex)
+            {
+                chat("Failed to revive " + rsn + ": " + ex.getMessage());
+                log.warn("Failed to revive {}", rsn, ex);
+            }
+        }, "skwid-revive").start();
+    }
+
     public String getStoplightState()
     {
         return tileMarkerReducer != null ? tileMarkerReducer.getStoplightState() : "GREEN";

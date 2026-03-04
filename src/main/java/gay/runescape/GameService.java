@@ -97,6 +97,24 @@ public class GameService
         relay.publishEliminated(gameId, writeKey, playerCanonical, requireLocalPlayerCanonical());
     }
 
+    public void revive(String playerCanonical) throws Exception
+    {
+        requireRelayEnabled();
+
+        String gameId = requireActiveGameId();
+        String writeKey = requireWriteKey();
+        relay.publishRevived(gameId, writeKey, playerCanonical);
+    }
+
+    public void reviveAsGuard(String playerCanonical) throws Exception
+    {
+        requireRelayEnabled();
+
+        String gameId = requireActiveGameId();
+        String actor = requireLocalPlayerCanonical();
+        relay.reviveAsGuard(gameId, playerCanonical, actor);
+    }
+
     public void removePlayer(String targetCanonical) throws Exception
     {
         String gameId = requireActiveGameId();
@@ -324,6 +342,10 @@ public class GameService
         void publishLeft(String gameId, String playerCanonical) throws Exception;
 
         void eliminateAsGuard(String gameId, String playerCanonical, String actorCanonical) throws Exception;
+
+        void publishRevived(String gameId, String writeKey, String playerCanonical) throws Exception;
+
+        void reviveAsGuard(String gameId, String playerCanonical, String actorCanonical) throws Exception;
 
         void publishGameEnded(String gameId, String writeKey) throws Exception;
 

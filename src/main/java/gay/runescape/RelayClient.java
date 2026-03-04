@@ -165,6 +165,38 @@ public class RelayClient implements GameService.RelayGateway
     }
 
     @Override
+    public void publishRevived(String gameId, String writeKey, String playerCanonical) throws Exception
+    {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("player", playerCanonical);
+        publishEvent(gameId, writeKey, "REVIVED", payload);
+    }
+
+    @Override
+    public void reviveAsGuard(String gameId, String playerCanonical, String actorCanonical) throws Exception
+    {
+        String url = baseUrl + "/v1/games/" + gameId + "/revive";
+
+        JsonObject body = new JsonObject();
+        body.addProperty("player", playerCanonical);
+        if (actorCanonical != null) body.addProperty("actor", actorCanonical);
+
+        Request req = new Request.Builder()
+                .url(url)
+                .post(RequestBody.create(JSON, gson.toJson(body)))
+                .build();
+
+        try (Response resp = http.newCall(req).execute())
+        {
+            String respBody = resp.body() != null ? resp.body().string() : "";
+            if (!resp.isSuccessful())
+            {
+                throw new IOException("Revive failed (" + resp.code() + "): " + respBody);
+            }
+        }
+    }
+
+    @Override
     public void eliminateAsGuard(String gameId, String playerCanonical, String actorCanonical) throws Exception
     {
         String url = baseUrl + "/v1/games/" + gameId + "/eliminate";

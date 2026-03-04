@@ -224,6 +224,18 @@ public class RosterReducer
             return;
         }
 
+        if ("REVIVED".equals(type))
+        {
+            final String playerRaw = safeStr(e.payload, "player");
+            if (playerRaw == null) return;
+
+            final String playerKey = canonicalKey(playerRaw);
+            if (playerKey == null) return;
+
+            statusByPlayer.put(playerKey, PlayerStatus.ALIVE);
+            return;
+        }
+
         if ("REMOVE".equals(type))
         {
             final String playerRaw = safeStr(e.payload, "player");
