@@ -1,7 +1,6 @@
 package gay.runescape;
 
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import lombok.extern.slf4j.Slf4j;
@@ -21,18 +20,20 @@ public class RelayClient implements GameService.RelayGateway
 {
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
 
-    private final OkHttpClient http = new OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .writeTimeout(15, TimeUnit.SECONDS)
-            .build();
-    private final Gson gson = new GsonBuilder().create();
+    private final OkHttpClient http;
+    private final Gson gson;
 
     private final String baseUrl;
 
-    public RelayClient(String baseUrl)
+    public RelayClient(String baseUrl, OkHttpClient httpClient, Gson gson)
     {
         this.baseUrl = normalizeBaseUrl(baseUrl);
+        this.http = httpClient.newBuilder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(15, TimeUnit.SECONDS)
+                .writeTimeout(15, TimeUnit.SECONDS)
+                .build();
+        this.gson = gson;
     }
 
     @Override

@@ -16,6 +16,7 @@ public class AccountConfig
 {
     private final ConfigManager configManager;
     private final Client client;
+    private final Gson gson;
 
     private static final String KEY_ACTIVE_GAME = "activeGameId";
     private static final String KEY_JOIN_CODE   = "joinCode";
@@ -24,7 +25,6 @@ public class AccountConfig
 
     // gameId -> writeKey cache (stored as JSON)
     private static final String KEY_COMMANDER_KEYRING_JSON = "commanderKeyringJson";
-    private static final Gson GSON = new Gson();
     private static final Type MAP_TYPE = new TypeToken<Map<String, String>>(){}.getType();
 
     public String getActiveGameId()
@@ -153,7 +153,7 @@ public class AccountConfig
 
         try
         {
-            final Map<String, String> parsed = GSON.fromJson(raw, MAP_TYPE);
+            final Map<String, String> parsed = gson.fromJson(raw, MAP_TYPE);
             return parsed != null ? new HashMap<>(parsed) : new HashMap<>();
         }
         catch (Exception ignored)
@@ -165,7 +165,7 @@ public class AccountConfig
 
     private void saveCommanderKeyring(final Map<String, String> keyring)
     {
-        setCommanderKeyringJson(GSON.toJson(keyring != null ? keyring : new HashMap<>()));
+        setCommanderKeyringJson(gson.toJson(keyring != null ? keyring : new HashMap<>()));
     }
 
     private String getCommanderKeyringJson()

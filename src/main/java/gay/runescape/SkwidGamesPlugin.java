@@ -1,7 +1,9 @@
 package gay.runescape;
 
+import com.google.gson.Gson;
 import com.google.inject.Provides;
 import javax.inject.Inject;
+import okhttp3.OkHttpClient;
 import javax.swing.*;
 
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +46,8 @@ public class SkwidGamesPlugin extends Plugin
     @Inject private net.runelite.client.ui.ClientToolbar clientToolbar;
     @Inject private SkwidGamesPanel panel;
     @Inject private net.runelite.client.ui.overlay.OverlayManager overlayManager;
+    @Inject private OkHttpClient okHttpClient;
+    @Inject private Gson gson;
 
     private net.runelite.client.ui.NavigationButton navButton;
 
@@ -71,9 +75,9 @@ public class SkwidGamesPlugin extends Plugin
     protected void startUp()
     {
         executor = Executors.newFixedThreadPool(2);
-        accountConfig = new AccountConfig(configManager, client);
+        accountConfig = new AccountConfig(configManager, client, gson);
 
-        relayClient = new RelayClient("https://skwid.runescape.gay");
+        relayClient = new RelayClient("https://skwid.runescape.gay", okHttpClient, gson);
         gameService = new GameService(client, accountConfig, relayClient);
         rosterReducer = new RosterReducer();
         tileMarkerReducer = new TileMarkerReducer();
