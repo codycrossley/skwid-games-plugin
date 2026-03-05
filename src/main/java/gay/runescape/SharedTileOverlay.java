@@ -22,9 +22,8 @@ import java.util.List;
 public class SharedTileOverlay extends Overlay
 {
     // Default border colors used when entry.color is absent or unparseable
-    private static final Color DEFAULT_BORDER       = new Color(255, 255,   0, 200); // yellow
     private static final Color COLOR_STANDARD       = new Color(255, 255,   0, 200); // yellow
-    private static final Color COLOR_LANDMINE       = new Color(255,   0,   0, 200); // red
+    private static final Color COLOR_LANDMINE       = new Color(0, 0, 0, 200); // charcoal
     private static final Color COLOR_STOPLIGHT_RED  = new Color(255,   0,   0, 200); // red
     private static final Color COLOR_STOPLIGHT_GREEN = new Color(  0, 255,   0, 200); // green
 
@@ -76,10 +75,10 @@ public class SharedTileOverlay extends Overlay
     {
         WorldPoint wp = entry.point;
 
-        Collection<WorldPoint> localPoints = WorldPoint.toLocalInstance(client, wp);
+        Collection<WorldPoint> localPoints = WorldPoint.toLocalInstance(client.getTopLevelWorldView(), wp);
         for (WorldPoint local : localPoints)
         {
-            LocalPoint lp = LocalPoint.fromWorld(client, local);
+            LocalPoint lp = LocalPoint.fromWorld(client.getTopLevelWorldView(), local);
             if (lp == null) continue;
 
             Polygon poly = Perspective.getCanvasTilePoly(client, lp);
@@ -133,17 +132,6 @@ public class SharedTileOverlay extends Overlay
 
     private Color resolveColor(TileMarkerReducer.TileMarkerEntry entry)
     {
-        // STOPLIGHT color is always driven by live game state, ignoring stored color
-        if ("STOPLIGHT".equalsIgnoreCase(entry.tileClass))
-        {
-            return classDefaultColor(entry.tileClass);
-        }
-        // Explicit color in the event payload takes priority for all other classes
-        if (entry.color != null && !entry.color.isBlank())
-        {
-            Color parsed = parseColor(entry.color);
-            if (parsed != DEFAULT_BORDER) return parsed;
-        }
         return classDefaultColor(entry.tileClass);
     }
 
@@ -160,18 +148,4 @@ public class SharedTileOverlay extends Overlay
         }
     }
 
-    private static Color parseColor(String hex)
-    {
-        if (hex == null || hex.isBlank()) return DEFAULT_BORDER;
-        try
-        {
-            String s = hex.startsWith("#") ? hex.substring(1) : hex;
-            int rgb = Integer.parseUnsignedInt(s, 16);
-            return new Color(rgb);
-        }
-        catch (Exception ignored)
-        {
-            return DEFAULT_BORDER;
-        }
-    }
 }

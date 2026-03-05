@@ -131,20 +131,8 @@ public class GameService
         String writeKey = requireWriteKey();
         requireRelayEnabled();
         String me = requireLocalPlayerCanonical();
-        String color = colorForClass(tileClass);
         relay.publishTileMarked(gameId, writeKey, wp.getX(), wp.getY(), wp.getPlane(),
-                label, color, me, tileClass, visibleTo);
-    }
-
-    private static String colorForClass(String tileClass)
-    {
-        if (tileClass == null) return "#FFFF00";
-        switch (tileClass.toUpperCase(Locale.ROOT))
-        {
-            case "LANDMINE":  return "#FF0000";
-            case "STOPLIGHT": return "#00FF00"; // starts green; overlay overrides dynamically
-            default:          return "#FFFF00";
-        }
+                label, me, tileClass, visibleTo);
     }
 
     public void unmarkTile(WorldPoint wp) throws Exception
@@ -352,7 +340,7 @@ public class GameService
         void endGame(String gameId, String writeKey) throws Exception;
 
         void publishTileMarked(String gameId, String writeKey, int x, int y, int plane,
-                               String label, String color, String markedBy,
+                               String label, String markedBy,
                                String tileClass, Set<String> visibleTo) throws Exception;
 
         void publishTileUnmarked(String gameId, String writeKey, int x, int y, int plane) throws Exception;

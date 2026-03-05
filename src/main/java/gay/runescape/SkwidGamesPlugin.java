@@ -64,6 +64,21 @@ public class SkwidGamesPlugin extends Plugin
     private ExecutorService executor;
     /** Tracks the last seen stoplight state to detect RED transitions for elimination. */
     private String lastSeenStoplightState = "GREEN";
+    /** Last confirmed tile configuration, used for quick-marking tiles. */
+    private volatile TileConfig lastTileConfig = null;
+
+    private static class TileConfig
+    {
+        final String label;
+        final String tileClass;
+        final Set<String> visibleTo;
+        TileConfig(String label, String tileClass, Set<String> visibleTo)
+        {
+            this.label     = label;
+            this.tileClass = tileClass;
+            this.visibleTo = visibleTo;
+        }
+    }
 
     @Provides
     SkwidGamesConfig provideConfig(ConfigManager configManager)
@@ -124,7 +139,6 @@ public class SkwidGamesPlugin extends Plugin
         tileOverlay = new SharedTileOverlay(client, config, gameService, tileMarkerReducer, rosterReducer);
         overlayManager.add(tileOverlay);
 
-        // TODO: Design an icon
         java.awt.image.BufferedImage icon = ImageUtil.loadImageResource(SkwidGamesPlugin.class, "panel_icon.png");
 
         navButton = net.runelite.client.ui.NavigationButton.builder()
@@ -408,6 +422,7 @@ public class SkwidGamesPlugin extends Plugin
         }
         pendingEliminations.clear();
         lastSeenStoplightState = "GREEN";
+        lastTileConfig = null;
     }
 
     public String getJoinCode()
@@ -581,13 +596,49 @@ public class SkwidGamesPlugin extends Plugin
             if (selectedTile != null)
             {
                 WorldPoint wp = selectedTile.getWorldLocation();
+
                 boolean alreadyMarked = tileMarkerReducer.getMarker(wp) != null;
-                String label = alreadyMarked ? "Unmark tile" : "Configure tile";
-                client.createMenuEntry(-1)
-                        .setOption(label)
-                        .setTarget("")
-                        .setType(net.runelite.api.MenuAction.RUNELITE)
-                        .setDeprioritized(false);
+
+                // Deprioritize all existing entries so our option wins the left-click slot
+                for (MenuEntry entry : client.getMenuEntries())
+                {
+                    entry.setDeprioritized(true);
+                }
+
+                if (alreadyMarked)
+                {
+                    // Quick configure tile below, Reset tile on top
+                    if (lastTileConfig != null)
+                    {
+                        client.createMenuEntry(-1)
+                                .setOption("Quick configure tile")
+                                .setTarget("")
+                                .setType(net.runelite.api.MenuAction.RUNELITE)
+                                .setDeprioritized(false);
+                    }
+                    client.createMenuEntry(-1)
+                            .setOption("Reset tile")
+                            .setTarget("")
+                            .setType(net.runelite.api.MenuAction.RUNELITE)
+                            .setDeprioritized(false);
+                }
+                else
+                {
+                    // Configure tile below, Quick configure tile on top (if available)
+                    client.createMenuEntry(-1)
+                            .setOption("Configure tile")
+                            .setTarget("")
+                            .setType(net.runelite.api.MenuAction.RUNELITE)
+                            .setDeprioritized(false);
+                    if (lastTileConfig != null)
+                    {
+                        client.createMenuEntry(-1)
+                                .setOption("Quick configure tile")
+                                .setTarget("")
+                                .setType(net.runelite.api.MenuAction.RUNELITE)
+                                .setDeprioritized(false);
+                    }
+                }
             }
         }
     }
@@ -622,7 +673,14 @@ public class SkwidGamesPlugin extends Plugin
             return;
         }
 
-        if ("Unmark tile".equalsIgnoreCase(opt))
+        if ("Quick configure tile".equalsIgnoreCase(opt))
+        {
+            Tile tile = client.getSelectedSceneTile();
+            if (tile != null) handleQuickMarkTile(tile.getWorldLocation());
+            return;
+        }
+
+        if ("Reset tile".equalsIgnoreCase(opt))
         {
             handleUnmarkTile();
         }
@@ -940,6 +998,9 @@ public class SkwidGamesPlugin extends Plugin
             if (cbContestant.isSelected()) visibleTo.add("CONTESTANT");
             final Set<String> finalVisibleTo = visibleTo;
 
+            // Save as the last-used config for quick-mark
+            lastTileConfig = new TileConfig(finalLabel, finalClass, new HashSet<>(finalVisibleTo));
+
             executor.execute(() ->
             {
                 try
@@ -952,6 +1013,24 @@ public class SkwidGamesPlugin extends Plugin
                     log.warn("Failed to configure tile", ex);
                 }
             });
+        });
+    }
+
+    private void handleQuickMarkTile(WorldPoint wp)
+    {
+        TileConfig cfg = lastTileConfig;
+        if (cfg == null) return;
+        executor.execute(() ->
+        {
+            try
+            {
+                gameService.markTile(wp, cfg.label, cfg.tileClass, cfg.visibleTo);
+            }
+            catch (Exception ex)
+            {
+                chat("Failed to quick configure tile: " + ex.getMessage());
+                log.warn("Failed to quick configure tile", ex);
+            }
         });
     }
 

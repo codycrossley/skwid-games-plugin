@@ -255,7 +255,7 @@ public class RelayClient implements GameService.RelayGateway
 
     @Override
     public void publishTileMarked(String gameId, String writeKey, int x, int y, int plane,
-                                  String label, String color, String markedBy,
+                                  String label, String markedBy,
                                   String tileClass, Set<String> visibleTo) throws Exception
     {
         JsonObject payload = new JsonObject();
@@ -263,7 +263,6 @@ public class RelayClient implements GameService.RelayGateway
         payload.addProperty("y", y);
         payload.addProperty("plane", plane);
         if (label     != null) payload.addProperty("label",     label);
-        if (color     != null) payload.addProperty("color",     color);
         if (markedBy  != null) payload.addProperty("markedBy",  markedBy);
         if (tileClass != null) payload.addProperty("tileClass", tileClass);
         if (visibleTo != null && !visibleTo.isEmpty())
