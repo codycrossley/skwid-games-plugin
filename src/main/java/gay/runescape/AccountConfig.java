@@ -202,6 +202,13 @@ public class AccountConfig
 
     private String getRsProfileKeyOrNull()
     {
-        return configManager.getRSProfileKey();
+        try
+        {
+            return configManager.getRSProfileKey();
+        }
+        catch (Exception e)
+        {
+            return null;
+        }
     }
 }

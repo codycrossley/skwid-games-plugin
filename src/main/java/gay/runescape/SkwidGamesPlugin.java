@@ -74,6 +74,7 @@ public class SkwidGamesPlugin extends Plugin
     @Override
     protected void startUp()
     {
+        log.info("Skwid Games starting up...");
         executor = Executors.newFixedThreadPool(2);
         accountConfig = new AccountConfig(configManager, client, gson);
 
@@ -113,7 +114,7 @@ public class SkwidGamesPlugin extends Plugin
             @Override
             public void onError(Exception e)
             {
-                log.debug("Poll error: {}", e.getMessage());
+                log.warn("Poll error: {}", e.getMessage());
             }
         });
 
@@ -147,15 +148,18 @@ public class SkwidGamesPlugin extends Plugin
         else if (active != null && !active.isBlank())
         {
             // Resume polling for a game that was active in the previous session
+            log.info("Resuming game {} from previous session", active);
             poller.start(active);
         }
 
         panel.refreshState();
+        log.info("Skwid Games started");
     }
 
     @Override
     protected void shutDown()
     {
+        log.info("Skwid Games shutting down...");
         menuManager.removePlayerMenuItem("Enlist");
 
         if (navButton != null)
@@ -319,7 +323,7 @@ public class SkwidGamesPlugin extends Plugin
                     }
                     catch (Exception ex)
                     {
-                        log.debug("Roster snapshot unavailable, replaying from seq 0: {}", ex.getMessage());
+                        log.warn("Roster snapshot unavailable, replaying from seq 0: {}", ex.getMessage());
                     }
                     poller.start(gameId, startSeq);
                     loadTilesAsync(gameId);
@@ -534,7 +538,7 @@ public class SkwidGamesPlugin extends Plugin
             }
             catch (Exception ex)
             {
-                log.debug("Failed to fetch tiles: {}", ex.getMessage());
+                log.warn("Failed to fetch tiles: {}", ex.getMessage());
             }
         });
     }
