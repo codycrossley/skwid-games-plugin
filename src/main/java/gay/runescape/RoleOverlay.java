@@ -2,10 +2,12 @@ package gay.runescape;
 
 import javax.inject.Inject;
 import java.awt.*;
+import java.awt.image.BufferedImage;
 import net.runelite.api.Client;
 import net.runelite.api.Player;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.overlay.*;
+import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.Text;
 
 public class RoleOverlay extends Overlay
@@ -18,11 +20,13 @@ public class RoleOverlay extends Overlay
     private static final float FONT_SIZE_PT = 16f;
     private final Font font = FontManager.getRunescapeBoldFont().deriveFont(FONT_SIZE_PT);
 
-    private static final Color COMMANDER_COLOR  = new Color(246, 101, 244);
-    private static final Color GUARD_COLOR      = new Color(246, 101, 244);
+    private final BufferedImage commanderIcon;
+    private final BufferedImage guardIcon;
 
     private static final Color CONTESTANT_ALIVE_COLOR = new Color(25, 177, 86);
     private static final Color CONTESTANT_ELIMINATED_COLOR = new Color(214, 9, 65);
+    private static final Color COMMANDER_COLOR  = new Color(246, 101, 244);
+    private static final Color GUARD_COLOR      = new Color(246, 101, 244);
 
     private static final Color JOINED_COLOR = new Color(255, 222, 0);
     private static final Color REMOVED_COLOR    = new Color(24, 66, 5, 255);
@@ -37,6 +41,11 @@ public class RoleOverlay extends Overlay
 
         setPosition(OverlayPosition.DYNAMIC);
         setLayer(OverlayLayer.ABOVE_SCENE);
+
+        commanderIcon = ImageUtil.resizeImage(
+                ImageUtil.loadImageResource(RoleOverlay.class, "commander_icon.png"), 24, 24);
+        guardIcon     = ImageUtil.resizeImage(
+                ImageUtil.loadImageResource(RoleOverlay.class, "guard_icon.png"), 24, 24);
     }
 
     @Override
@@ -79,15 +88,26 @@ public class RoleOverlay extends Overlay
             // Commander identifier
             final boolean isCommander = rsn.equals(commanderCanon);
 
+            // Commander and Guard use PNG icons
+            if (isCommander || role == PlayerRole.GUARD)
+            {
+                BufferedImage icon = isCommander ? commanderIcon : guardIcon;
+                if (icon != null)
+                {
+                    int yOffset = p.getLogicalHeight() + icon.getHeight();
+                    net.runelite.api.Point loc = p.getCanvasImageLocation(icon, yOffset);
+                    if (loc != null)
+                    {
+                        g.drawImage(icon, loc.getX(), loc.getY(), null);
+                    }
+                }
+                continue;
+            }
+
             final String label;
             final Color color;
 
-            if (isCommander)
-            {
-                label = "[]";
-                color = COMMANDER_COLOR;
-            }
-            else if (role == PlayerRole.CONTESTANT)
+            if (role == PlayerRole.CONTESTANT)
             {
                 Integer n = roster.getNumber(rsn);
 
@@ -102,11 +122,6 @@ public class RoleOverlay extends Overlay
                 // If enlisted as contestant but number hasn't arrived yet, show "?"
                 // This will also format the number as 0-padded 3-digit integer
                 label = (n != null && n > 0) ? String.format("%03d", n) : "?";
-            }
-            else if (role == PlayerRole.GUARD)
-            {
-                label = "X";
-                color = GUARD_COLOR;
             }
             else
             {
