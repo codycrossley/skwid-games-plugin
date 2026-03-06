@@ -59,6 +59,16 @@ public class SkwidGamesPlugin extends Plugin
     private SharedTileOverlay tileOverlay;
     /** RSNs (lowercase) for which the Commander has published an elimination this session. */
     private final Set<String> pendingEliminations = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** Item special-attack option names that trigger elimination when used on a player. */
+    private static final Set<String> ELIMINATE_OPTIONS = java.util.Set.of(
+        "Enamour",  // Love Crossbow
+        "Celebrate", // Dragon Candle Dagger
+        "Duel",     // Mystic Cards
+        "Whack",    // Rubber Chicken
+        "Jab",      // Boxing Gloves
+        "Slash"     // Hunting Knife
+    );
     private ExecutorService executor;
     /** Last confirmed tile configuration, used for quick-marking tiles. */
     private volatile TileConfig lastTileConfig = null;
@@ -640,11 +650,7 @@ public class SkwidGamesPlugin extends Plugin
             return;
         }
 
-        // Love Crossbow: Enamour
-        // Dragon Candle Dagger: Celebrate
-        // Mystic Cards: Duel
-        // Rubber Chicken: Whack
-        if ("Enamour".equalsIgnoreCase(opt) || "Celebrate".equalsIgnoreCase(opt) || "Duel".equalsIgnoreCase(opt) || "Whack".equalsIgnoreCase(opt))
+        if (ELIMINATE_OPTIONS.contains(opt))
         {
             handleEliminate(event);
             return;

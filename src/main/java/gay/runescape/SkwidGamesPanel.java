@@ -23,6 +23,7 @@ import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JToggleButton;
 import javax.swing.JPopupMenu;
+import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.JSeparator;
 import javax.swing.JTextField;
@@ -151,6 +152,7 @@ public class SkwidGamesPanel extends PluginPanel
         final JScrollPane scrollPane = new JScrollPane(northAnchor);
         scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        styleScrollPane(scrollPane);
         homePanel.add(scrollPane, BorderLayout.CENTER);
 
         // Tabbed navigation
@@ -322,6 +324,43 @@ public class SkwidGamesPanel extends PluginPanel
         rosterTablePanel.setLayout(new DynamicGridLayout(0, 1, 0, 0));
 
         rosterContainer.add(rosterTablePanel, BorderLayout.CENTER);
+    }
+
+    private static void styleScrollPane(JScrollPane pane)
+    {
+        final JScrollBar vsb = pane.getVerticalScrollBar();
+        vsb.setPreferredSize(new java.awt.Dimension(6, Integer.MAX_VALUE));
+        vsb.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+        vsb.setUI(new javax.swing.plaf.basic.BasicScrollBarUI()
+        {
+            @Override
+            protected void configureScrollBarColors()
+            {
+                thumbColor = ColorScheme.MEDIUM_GRAY_COLOR;
+                trackColor = ColorScheme.DARKER_GRAY_COLOR;
+            }
+
+            @Override
+            protected JButton createDecreaseButton(int orientation)
+            {
+                return zeroButton();
+            }
+
+            @Override
+            protected JButton createIncreaseButton(int orientation)
+            {
+                return zeroButton();
+            }
+
+            private JButton zeroButton()
+            {
+                final JButton btn = new JButton();
+                btn.setPreferredSize(new java.awt.Dimension(0, 0));
+                btn.setMinimumSize(new java.awt.Dimension(0, 0));
+                btn.setMaximumSize(new java.awt.Dimension(0, 0));
+                return btn;
+            }
+        });
     }
 
     private static void styleBtn(JButton btn)
