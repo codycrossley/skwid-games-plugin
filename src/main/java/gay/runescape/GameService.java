@@ -1,6 +1,7 @@
 package gay.runescape;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.util.Text;
@@ -15,10 +16,10 @@ import java.util.Set;
  *   - joinCode      (everyone; used to join/share)
  *   - writeKey      (commander only; used to publish events)
  *   - commander     (authoritative, from relay; used for overlays/UI)
- *
  * The authoritative roster/state lives in the relay event log.
  * Clients maintain a local reduced view via polling (RosterReducer/EventPoller).
  */
+@Slf4j
 @RequiredArgsConstructor
 public class GameService
 {
@@ -56,6 +57,9 @@ public class GameService
         accountConfig.setJoinCode(code);
         accountConfig.setCommander(joined.commander);
         String cached = accountConfig.getCachedWriteKeyForGame(joined.gameId);
+        log.info("joinGame: gameId={} commander={} me={} cachedWriteKey={}",
+                joined.gameId, joined.commander, me,
+                cached == null ? "null" : (cached.isBlank() ? "blank" : "present"));
         accountConfig.setWriteKey(cached);
     }
 
@@ -225,7 +229,23 @@ public class GameService
 
     private String requireWriteKey()
     {
+        String gameId = accountConfig.getActiveGameId();
         String writeKey = accountConfig.getWriteKey();
+        String cachedKey = gameId != null ? accountConfig.getCachedWriteKeyForGame(gameId) : null;
+        log.debug("requireWriteKey: gameId={} writeKey={} cachedKey={}",
+                gameId,
+                writeKey == null ? "null" : (writeKey.isBlank() ? "blank" : "present"),
+                cachedKey == null ? "null" : (cachedKey.isBlank() ? "blank" : "present"));
+
+        // Active slot can end up blank (e.g. after clearGamePointers or a missed join restore).
+        // Fall back to the keyring if we have a cached key for this game.
+        if ((writeKey == null || writeKey.isBlank()) && cachedKey != null && !cachedKey.isBlank())
+        {
+            log.debug("requireWriteKey: active slot blank, restoring from keyring for gameId={}", gameId);
+            accountConfig.setWriteKey(cachedKey);
+            writeKey = cachedKey;
+        }
+
         if (writeKey == null || writeKey.isBlank())
         {
             throw new IllegalStateException("Only the Commander can perform this action in the current game.");
@@ -268,8 +288,9 @@ public class GameService
     // In GameService
     public boolean isLocalCommander()
     {
+        String writeKey = accountConfig.getWriteKey();
         return isLocalPlayerCommanderByName() &&
-                accountConfig.getWriteKey() != null;
+                writeKey != null && !writeKey.isBlank();
     }
 
     public boolean isLocalPlayerCommanderByName()

@@ -7,10 +7,12 @@ import java.lang.reflect.Type;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.util.Text;
 
+@Slf4j
 @RequiredArgsConstructor
 public class AccountConfig
 {
@@ -74,9 +76,16 @@ public class AccountConfig
         String rsKey = getRsProfileKeyOrNull();
         if (rsKey != null)
         {
-            return configManager.getRSProfileConfiguration(SkwidGamesConfig.GROUP, KEY_WRITE_KEY);
+            String val = configManager.getRSProfileConfiguration(SkwidGamesConfig.GROUP, KEY_WRITE_KEY);
+            log.debug("getWriteKey: path=RSProfile rsKey={} result={}", rsKey,
+                    val == null ? "null" : (val.isBlank() ? "blank" : "present"));
+            return val;
         }
-        return configManager.getConfiguration(SkwidGamesConfig.GROUP, KEY_WRITE_KEY + "." + getLocalPlayerKey());
+        String playerKey = getLocalPlayerKey();
+        String val = configManager.getConfiguration(SkwidGamesConfig.GROUP, KEY_WRITE_KEY + "." + playerKey);
+        log.debug("getWriteKey: path=localPlayerKey playerKey={} result={}", playerKey,
+                val == null ? "null" : (val.isBlank() ? "blank" : "present"));
+        return val;
     }
 
     public void setWriteKey(String writeKey)
@@ -84,10 +93,15 @@ public class AccountConfig
         String rsKey = getRsProfileKeyOrNull();
         if (rsKey != null)
         {
+            log.debug("setWriteKey: path=RSProfile rsKey={} value={}", rsKey,
+                    writeKey == null ? "null" : (writeKey.isBlank() ? "blank" : "present"));
             configManager.setRSProfileConfiguration(SkwidGamesConfig.GROUP, KEY_WRITE_KEY, writeKey);
             return;
         }
-        configManager.setConfiguration(SkwidGamesConfig.GROUP, KEY_WRITE_KEY + "." + getLocalPlayerKey(), writeKey);
+        String playerKey = getLocalPlayerKey();
+        log.debug("setWriteKey: path=localPlayerKey playerKey={} value={}", playerKey,
+                writeKey == null ? "null" : (writeKey.isBlank() ? "blank" : "present"));
+        configManager.setConfiguration(SkwidGamesConfig.GROUP, KEY_WRITE_KEY + "." + playerKey, writeKey);
     }
 
     public String getCommander()
@@ -170,25 +184,14 @@ public class AccountConfig
 
     private String getCommanderKeyringJson()
     {
-        // Store keyring at the RS Profile scope when available (so it's per-profile)
-        String rsKey = getRsProfileKeyOrNull();
-        if (rsKey != null)
-        {
-            return configManager.getRSProfileConfiguration(SkwidGamesConfig.GROUP, KEY_COMMANDER_KEYRING_JSON);
-        }
-        // Otherwise, store per local player key (so multiple accounts don't collide)
-        return configManager.getConfiguration(SkwidGamesConfig.GROUP, KEY_COMMANDER_KEYRING_JSON + "." + getLocalPlayerKey());
+        // Stored in global (non-profile-scoped) config so write keys survive RS profile changes.
+        // The keyring is keyed internally by gameId, so there is no cross-account collision risk.
+        return configManager.getConfiguration(SkwidGamesConfig.GROUP, KEY_COMMANDER_KEYRING_JSON);
     }
 
     private void setCommanderKeyringJson(final String json)
     {
-        String rsKey = getRsProfileKeyOrNull();
-        if (rsKey != null)
-        {
-            configManager.setRSProfileConfiguration(SkwidGamesConfig.GROUP, KEY_COMMANDER_KEYRING_JSON, json);
-            return;
-        }
-        configManager.setConfiguration(SkwidGamesConfig.GROUP, KEY_COMMANDER_KEYRING_JSON + "." + getLocalPlayerKey(), json);
+        configManager.setConfiguration(SkwidGamesConfig.GROUP, KEY_COMMANDER_KEYRING_JSON, json);
     }
 
     private String getLocalPlayerKey()
