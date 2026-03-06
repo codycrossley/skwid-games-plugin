@@ -28,7 +28,6 @@ import java.util.concurrent.Executors;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
-import net.runelite.client.menus.MenuManager;
 import net.runelite.client.plugins.*;
 import net.runelite.client.util.Text;
 import net.runelite.client.util.ImageUtil;
@@ -40,7 +39,6 @@ public class SkwidGamesPlugin extends Plugin
 {
     @Inject private Client client;
     @Inject private ClientThread clientThread;
-    @Inject private MenuManager menuManager;
     @Inject private ConfigManager configManager;
     @Inject private SkwidGamesConfig config;
     @Inject private net.runelite.client.ui.ClientToolbar clientToolbar;
@@ -131,7 +129,6 @@ public class SkwidGamesPlugin extends Plugin
             }
         });
 
-        menuManager.addPlayerMenuItem("Enlist");
         roleOverlay = new RoleOverlay(client, config, gameService, rosterReducer);
         overlayManager.add(roleOverlay);
         tileOverlay = new SharedTileOverlay(client, config, gameService, tileMarkerReducer, rosterReducer);
@@ -172,7 +169,6 @@ public class SkwidGamesPlugin extends Plugin
     protected void shutDown()
     {
         log.info("Skwid Games shutting down...");
-        menuManager.removePlayerMenuItem("Enlist");
 
         if (navButton != null)
         {
@@ -561,25 +557,21 @@ public class SkwidGamesPlugin extends Plugin
     @Subscribe
     public void onMenuEntryAdded(MenuEntryAdded e)
     {
-        // Hide "Enlist" unless the local player is a commander with an active game
-        if ("Enlist".equals(e.getOption()))
+        // Inject "Enlist" on player right-click, only when the local player is an active commander.
+        // "Follow" is a standard game option that always appears for other players, used as a
+        // single-fire trigger so we add Enlist exactly once per context menu.
+        if ("Follow".equals(e.getOption())
+                && e.getMenuEntry().getActor() instanceof Player
+                && gameService != null
+                && gameService.isLocalCommander()
+                && gameService.getActiveGameId() != null
+                && !gameService.getActiveGameId().isBlank())
         {
-            boolean commanderActive = gameService != null
-                    && gameService.isLocalCommander()
-                    && gameService.getActiveGameId() != null
-                    && !gameService.getActiveGameId().isBlank();
-            if (!commanderActive)
-            {
-                MenuEntry[] entries = client.getMenuEntries();
-                client.setMenuEntries(java.util.Arrays.copyOf(entries, entries.length - 1));
-            }
-            return;
-        }
-
-        // Option is the verb ("Walk here", "Trade", etc.)
-        if ("Enamour".equals(e.getOption()))
-        {
-            client.getMenuEntries()[client.getMenuEntries().length - 1].setOption("Eliminate");
+            client.createMenuEntry(-1)
+                    .setOption("Enlist")
+                    .setTarget(e.getTarget())
+                    .setType(net.runelite.api.MenuAction.RUNELITE_PLAYER)
+                    .setIdentifier(e.getIdentifier());
         }
 
         // Tile marking: inject when Commander shift+right-clicks the ground
@@ -648,8 +640,11 @@ public class SkwidGamesPlugin extends Plugin
             return;
         }
 
-        // New: eliminate path
-        if ("Eliminate".equalsIgnoreCase(opt))
+        // Love Crossbow: Enamour
+        // Dragon Candle Dagger: Celebrate
+        // Mystic Cards: Duel
+        // Rubber Chicken: Whack
+        if ("Enamour".equalsIgnoreCase(opt) || "Celebrate".equalsIgnoreCase(opt) || "Duel".equalsIgnoreCase(opt) || "Whack".equalsIgnoreCase(opt))
         {
             handleEliminate(event);
             return;
