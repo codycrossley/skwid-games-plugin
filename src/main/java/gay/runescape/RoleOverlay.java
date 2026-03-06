@@ -43,9 +43,9 @@ public class RoleOverlay extends Overlay
         setLayer(OverlayLayer.ABOVE_SCENE);
 
         commanderIcon = ImageUtil.resizeImage(
-                ImageUtil.loadImageResource(RoleOverlay.class, "commander_icon.png"), 24, 24);
+                ImageUtil.loadImageResource(RoleOverlay.class, "commander_icon.png"), 16, 16);
         guardIcon     = ImageUtil.resizeImage(
-                ImageUtil.loadImageResource(RoleOverlay.class, "guard_icon.png"), 24, 24);
+                ImageUtil.loadImageResource(RoleOverlay.class, "guard_icon.png"), 16, 16);
     }
 
     @Override

@@ -62,8 +62,6 @@ public class SkwidGamesPlugin extends Plugin
     /** RSNs (lowercase) for which the Commander has published an elimination this session. */
     private final Set<String> pendingEliminations = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private ExecutorService executor;
-    /** Tracks the last seen stoplight state to detect RED transitions for elimination. */
-    private String lastSeenStoplightState = "GREEN";
     /** Last confirmed tile configuration, used for quick-marking tiles. */
     private volatile TileConfig lastTileConfig = null;
 
@@ -421,7 +419,6 @@ public class SkwidGamesPlugin extends Plugin
             tileMarkerReducer.reset();
         }
         pendingEliminations.clear();
-        lastSeenStoplightState = "GREEN";
         lastTileConfig = null;
     }
 
@@ -447,7 +444,7 @@ public class SkwidGamesPlugin extends Plugin
 
     public boolean isLocalGuard()
     {
-        if (rosterReducer == null || client.getLocalPlayer() == null) return false;
+        if (rosterReducer == null || client.getLocalPlayer() == null || client.getLocalPlayer().getName() == null) return false;
         String localName = net.runelite.client.util.Text.toJagexName(client.getLocalPlayer().getName());
         return localName != null && rosterReducer.getRole(localName) == PlayerRole.GUARD;
     }
@@ -513,7 +510,6 @@ public class SkwidGamesPlugin extends Plugin
                 tileMarkerReducer.setStoplightState(state);
                 clientThread.invokeLater(() ->
                 {
-                    lastSeenStoplightState = state;
                     if ("RED".equals(state))
                     {
                         eliminatePlayersOnStoplightTiles();
@@ -693,13 +689,8 @@ public class SkwidGamesPlugin extends Plugin
         String gameId = gameService.getActiveGameId();
         if (gameId == null || gameId.isBlank()) return;
 
-        // Stoplight: eliminate players on STOPLIGHT tiles at the moment state turns RED
-        String currentStoplightState = tileMarkerReducer.getStoplightState();
-        boolean stoplightJustTurnedRed = "RED".equals(currentStoplightState)
-                && "GREEN".equals(lastSeenStoplightState);
-        lastSeenStoplightState = currentStoplightState;
-
-        if (stoplightJustTurnedRed)
+        // Stoplight: eliminate players on STOPLIGHT tiles every tick while state is RED
+        if ("RED".equals(tileMarkerReducer.getStoplightState()))
         {
             eliminatePlayersOnStoplightTiles();
         }
@@ -736,11 +727,11 @@ public class SkwidGamesPlugin extends Plugin
                 }
                 try
                 {
-                    // Reveal the tile to everyone now that it has been triggered
+                    // Reveal the detonated tile to everyone
                     Set<String> everyone = new HashSet<>(java.util.Arrays.asList(
                             "COMMANDER", "GUARD", "CONTESTANT"));
                     gameService.markTile(triggeredTile.point, triggeredTile.label,
-                            triggeredTile.tileClass, everyone);
+                            "LANDMINE_DETONATED", everyone);
                 }
                 catch (Exception ex)
                 {
