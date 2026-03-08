@@ -82,6 +82,15 @@ public class GameService
         relay.eliminateAsGuard(gameId, playerCanonical, actor);
     }
 
+    public void detonateAsGuard(WorldPoint wp) throws Exception
+    {
+        requireRelayEnabled();
+
+        String gameId = requireActiveGameId();
+        String actor = requireLocalPlayerCanonical();
+        relay.detonateAsGuard(gameId, wp.getX(), wp.getY(), wp.getPlane(), actor);
+    }
+
     public void eliminate(String playerCanonical) throws Exception
     {
         requireRelayEnabled();
@@ -199,6 +208,25 @@ public class GameService
     public String getJoinCode()     { return accountConfig.getJoinCode(); }
     public String getWriteKey()     { return accountConfig.getWriteKey(); }
     public String getCommander()    { return accountConfig.getCommander(); }
+
+    /**
+     * Proactively restores the write key from the keyring if the active slot is blank.
+     * Call this during resume so isLocalCommander() returns the correct value before
+     * any user action triggers requireWriteKey().
+     */
+    public void tryRestoreWriteKey()
+    {
+        String gameId = accountConfig.getActiveGameId();
+        if (gameId == null || gameId.isBlank()) return;
+        String writeKey = accountConfig.getWriteKey();
+        if (writeKey != null && !writeKey.isBlank()) return;
+        String cached = accountConfig.getCachedWriteKeyForGame(gameId);
+        if (cached != null && !cached.isBlank())
+        {
+            log.debug("tryRestoreWriteKey: restored from keyring for gameId={}", gameId);
+            accountConfig.setWriteKey(cached);
+        }
+    }
 
     public void clearActiveGameLocally()
     {
@@ -351,6 +379,8 @@ public class GameService
         void publishLeft(String gameId, String playerCanonical) throws Exception;
 
         void eliminateAsGuard(String gameId, String playerCanonical, String actorCanonical) throws Exception;
+
+        void detonateAsGuard(String gameId, int x, int y, int plane, String actorCanonical) throws Exception;
 
         void publishRevived(String gameId, String writeKey, String playerCanonical) throws Exception;
 

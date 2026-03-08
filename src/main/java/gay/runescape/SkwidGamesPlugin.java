@@ -12,6 +12,7 @@ import net.runelite.api.Client;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.GameState;
 import net.runelite.api.KeyCode;
+import net.runelite.api.Menu;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.Player;
 import net.runelite.api.Tile;
@@ -168,7 +169,8 @@ public class SkwidGamesPlugin extends Plugin
         {
             // Resume polling for a game that was active in the previous session
             log.info("Resuming game {} from previous session", active);
-            poller.start(active);
+            resumeGameAsync(active);
+            return; // resumeGameAsync calls panel.refreshState() once the snapshot is loaded
         }
 
         panel.refreshState();
@@ -211,7 +213,8 @@ public class SkwidGamesPlugin extends Plugin
         {
             // Poller hasn't started yet (e.g. RS profile was unavailable at startUp time).
             // Begin polling now so the roster and overlay stay in sync with the relay.
-            poller.start(active);
+            resumeGameAsync(active);
+            return; // resumeGameAsync calls panel.refreshState() once the snapshot is loaded
         }
 
         SwingUtilities.invokeLater(panel::refreshState);
@@ -518,7 +521,7 @@ public class SkwidGamesPlugin extends Plugin
                 {
                     if ("RED".equals(state))
                     {
-                        eliminatePlayersOnStoplightTiles();
+                        eliminatePlayersOnStoplightTiles(true);
                     }
                 });
             }
@@ -541,6 +544,37 @@ public class SkwidGamesPlugin extends Plugin
             out.add(new RosterReducer.SnapshotPlayer(p.rsn, p.role, p.number, p.status, p.joined));
         }
         return out;
+    }
+
+    /**
+     * Called on resume (startup or login) when an active game is found in saved config.
+     * Fetches a roster snapshot to immediately populate the reducer (so the panel renders
+     * correctly without waiting for the first poll cycle), restores the write key from the
+     * keyring (so isLocalCommander() works), then starts polling from latestSeq.
+     */
+    private void resumeGameAsync(String gameId)
+    {
+        executor.execute(() ->
+        {
+            gameService.tryRestoreWriteKey();
+
+            int startSeq = 0;
+            try
+            {
+                RelayClient.RosterSnapshotResponse snap = gameService.fetchRoster(gameId);
+                rosterReducer.loadSnapshot(toSnapshotPlayers(snap.players));
+                startSeq = snap.latestSeq;
+            }
+            catch (Exception ex)
+            {
+                log.warn("Resume roster snapshot unavailable, replaying from seq 0: {}", ex.getMessage());
+            }
+
+            poller.start(gameId, startSeq);
+            loadTilesAsync(gameId);
+
+            SwingUtilities.invokeLater(panel::refreshState);
+        });
     }
 
     private void loadTilesAsync(String gameId)
@@ -577,9 +611,29 @@ public class SkwidGamesPlugin extends Plugin
                 && gameService.getActiveGameId() != null
                 && !gameService.getActiveGameId().isBlank())
         {
-            client.createMenuEntry(-1)
+            MenuEntry enlistEntry = client.createMenuEntry(-1)
                     .setOption("Enlist")
                     .setTarget(e.getTarget())
+                    .setType(net.runelite.api.MenuAction.RUNELITE_PLAYER)
+                    .setIdentifier(e.getIdentifier());
+
+            final String contestantHex = String.format("%06X", RoleOverlay.CONTESTANT_ALIVE_COLOR.getRGB() & 0xFFFFFF);
+            final String guardHex      = String.format("%06X", RoleOverlay.GUARD_COLOR.getRGB() & 0xFFFFFF);
+
+            Menu subMenu = enlistEntry.createSubMenu();
+            subMenu.createMenuEntry(-1)
+                    .setOption("Remove")
+                    .setTarget("")
+                    .setType(net.runelite.api.MenuAction.RUNELITE_PLAYER)
+                    .setIdentifier(e.getIdentifier());
+            subMenu.createMenuEntry(-1)
+                    .setOption("<col=" + guardHex + ">Guard</col>")
+                    .setTarget("")
+                    .setType(net.runelite.api.MenuAction.RUNELITE_PLAYER)
+                    .setIdentifier(e.getIdentifier());
+            subMenu.createMenuEntry(-1)
+                    .setOption("<col=" + contestantHex + ">Contestant</col>")
+                    .setTarget("")
                     .setType(net.runelite.api.MenuAction.RUNELITE_PLAYER)
                     .setIdentifier(e.getIdentifier());
         }
@@ -650,34 +704,48 @@ public class SkwidGamesPlugin extends Plugin
             return;
         }
 
+        // Strip color tags before matching (sub-menu options may be colored)
+        final String optClean = Text.removeTags(opt).trim();
+
         if (ELIMINATE_OPTIONS.contains(opt))
         {
             handleEliminate(event);
             return;
         }
 
-        // Existing: enlist path
-        if ("Enlist".equalsIgnoreCase(opt))
+        if ("Contestant".equalsIgnoreCase(optClean))
         {
-            handleEnlist(event);
+            handleEnlistSubOption(event, PlayerRole.CONTESTANT);
+            return;
+        }
+
+        if ("Guard".equalsIgnoreCase(optClean))
+        {
+            handleEnlistSubOption(event, PlayerRole.GUARD);
+            return;
+        }
+
+        if ("Remove".equalsIgnoreCase(optClean))
+        {
+            handleEnlistSubOption(event, null);
             return;
         }
 
         // Tile marking
-        if ("Configure tile".equalsIgnoreCase(opt))
+        if ("Configure tile".equalsIgnoreCase(optClean))
         {
             handleMarkTile();
             return;
         }
 
-        if ("Quick configure tile".equalsIgnoreCase(opt))
+        if ("Quick configure tile".equalsIgnoreCase(optClean))
         {
             Tile tile = client.getSelectedSceneTile();
             if (tile != null) handleQuickMarkTile(tile.getWorldLocation());
             return;
         }
 
-        if ("Reset tile".equalsIgnoreCase(opt))
+        if ("Reset tile".equalsIgnoreCase(optClean))
         {
             handleUnmarkTile();
         }
@@ -686,14 +754,18 @@ public class SkwidGamesPlugin extends Plugin
     @Subscribe
     public void onGameTick(GameTick event)
     {
-        if (gameService == null || !gameService.isLocalCommander()) return;
+        if (gameService == null) return;
+        final boolean isCommander = gameService.isLocalCommander();
+        final boolean isGuard = isLocalGuard();
+        if (!isCommander && !isGuard) return;
+
         String gameId = gameService.getActiveGameId();
         if (gameId == null || gameId.isBlank()) return;
 
         // Stoplight: eliminate players on STOPLIGHT tiles every tick while state is RED
         if ("RED".equals(tileMarkerReducer.getStoplightState()))
         {
-            eliminatePlayersOnStoplightTiles();
+            eliminatePlayersOnStoplightTiles(isCommander);
         }
 
         if (tileMarkerReducer.snapshotLandmines().isEmpty()) return;
@@ -719,7 +791,8 @@ public class SkwidGamesPlugin extends Plugin
             {
                 try
                 {
-                    gameService.eliminate(victim);
+                    if (isCommander) gameService.eliminate(victim);
+                    else             gameService.eliminateAsGuard(victim);
                 }
                 catch (Exception ex)
                 {
@@ -728,11 +801,17 @@ public class SkwidGamesPlugin extends Plugin
                 }
                 try
                 {
-                    // Reveal the detonated tile to everyone
-                    Set<String> everyone = new HashSet<>(java.util.Arrays.asList(
-                            "COMMANDER", "GUARD", "CONTESTANT"));
-                    gameService.markTile(triggeredTile.point, triggeredTile.label,
-                            "LANDMINE_DETONATED", everyone);
+                    if (isCommander)
+                    {
+                        Set<String> everyone = new HashSet<>(java.util.Arrays.asList(
+                                "COMMANDER", "GUARD", "CONTESTANT"));
+                        gameService.markTile(triggeredTile.point, triggeredTile.label,
+                                "LANDMINE_DETONATED", everyone);
+                    }
+                    else
+                    {
+                        gameService.detonateAsGuard(triggeredTile.point);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -743,7 +822,7 @@ public class SkwidGamesPlugin extends Plugin
     }
 
     /** Must be called on the client thread. Eliminates all contestants currently on STOPLIGHT tiles. */
-    private void eliminatePlayersOnStoplightTiles()
+    private void eliminatePlayersOnStoplightTiles(boolean isCommander)
     {
         java.util.List<TileMarkerReducer.TileMarkerEntry> stoplights =
                 tileMarkerReducer.snapshotStoplights();
@@ -770,7 +849,11 @@ public class SkwidGamesPlugin extends Plugin
                 final String victim = rsn;
                 executor.execute(() ->
                 {
-                    try { gameService.eliminate(victim); }
+                    try
+                    {
+                        if (isCommander) gameService.eliminate(victim);
+                        else             gameService.eliminateAsGuard(victim);
+                    }
                     catch (Exception ex)
                     {
                         log.warn("Stoplight eliminate failed for {}", victim, ex);
@@ -781,49 +864,60 @@ public class SkwidGamesPlugin extends Plugin
         }
     }
 
-    private void handleEnlist(MenuOptionClicked event)
+    /** Handles a child option from the "Enlist >" sub-menu. role=null means Remove. */
+    private void handleEnlistSubOption(MenuOptionClicked event, PlayerRole role)
     {
-        final String target = resolveMenuTarget(event.getMenuTarget());
+        // Prefer player lookup via identifier (target is empty on sub-menu children)
+        final String target;
+        Player clickedPlayer = event.getMenuEntry().getPlayer();
+        if (clickedPlayer != null && clickedPlayer.getName() != null)
+        {
+            target = Text.toJagexName(clickedPlayer.getName());
+        }
+        else
+        {
+            target = resolveMenuTarget(event.getMenuTarget());
+        }
         if (target == null || target.isBlank())
         {
             chat("Could not resolve player name.");
             return;
         }
 
-        String active = gameService.getActiveGameId();
-        if (active == null || active.isBlank())
+        if (gameService.getActiveGameId() == null || gameService.getActiveGameId().isBlank())
         {
             chat("No active Skwid Game. Use the panel to start or join a game first.");
             return;
         }
 
-        SwingUtilities.invokeLater(() ->
+        if (role == null)
         {
-            Object[] options = {"Guard", "Contestant", "Remove", "Cancel"};
-            int choice = JOptionPane.showOptionDialog(
-                    null,
-                    "Set role for " + target + ":",
-                    "Skwid Games",
-                    JOptionPane.DEFAULT_OPTION,
-                    JOptionPane.QUESTION_MESSAGE,
-                    null,
-                    options,
-                    options[3]
-            );
+            remove(target);
+            return;
+        }
 
-            if (choice == 0)
+        if (role == PlayerRole.GUARD && !rosterReducer.hasJoined(target))
+        {
+            SwingUtilities.invokeLater(() ->
             {
-                enlist(target, PlayerRole.GUARD);
-            }
-            else if (choice == 1)
-            {
-                enlist(target, PlayerRole.CONTESTANT);
-            }
-            else if (choice == 2)
-            {
-                remove(target);
-            }
-        });
+                int confirm = JOptionPane.showConfirmDialog(
+                        null,
+                        target + " has not joined this game via the Skwid Games plugin.\n"
+                        + "Guards need the plugin running to monitor tile-based triggers.\n\n"
+                        + "Enlist them as a Guard anyway?",
+                        "Skwid Games — Guard Warning",
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.WARNING_MESSAGE
+                );
+                if (confirm == JOptionPane.YES_OPTION)
+                {
+                    enlist(target, PlayerRole.GUARD);
+                }
+            });
+            return;
+        }
+
+        enlist(target, role);
     }
 
     private void handleEliminate(MenuOptionClicked event)

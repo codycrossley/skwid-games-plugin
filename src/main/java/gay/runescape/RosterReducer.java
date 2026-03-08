@@ -162,7 +162,8 @@ public class RosterReducer
             displayNameByPlayer.putIfAbsent(playerKey, displayName(playerRaw));
 
             // Presence only. No number assignment here.
-            statusByPlayer.put(playerKey, PlayerStatus.ALIVE);
+            // Use putIfAbsent so an existing ELIMINATED status is not overwritten.
+            statusByPlayer.putIfAbsent(playerKey, PlayerStatus.ALIVE);
 
             // Keep track of players who have joined
             joinedPlayers.add(playerKey);

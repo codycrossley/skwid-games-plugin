@@ -227,6 +227,32 @@ public class RelayClient implements GameService.RelayGateway
     }
 
     @Override
+    public void detonateAsGuard(String gameId, int x, int y, int plane, String actorCanonical) throws Exception
+    {
+        String url = baseUrl + "/v1/games/" + gameId + "/detonate";
+
+        JsonObject body = new JsonObject();
+        body.addProperty("x", x);
+        body.addProperty("y", y);
+        body.addProperty("plane", plane);
+        if (actorCanonical != null) body.addProperty("actor", actorCanonical);
+
+        Request req = new Request.Builder()
+                .url(url)
+                .post(RequestBody.create(JSON, gson.toJson(body)))
+                .build();
+
+        try (Response resp = http.newCall(req).execute())
+        {
+            String respBody = resp.body() != null ? resp.body().string() : "";
+            if (!resp.isSuccessful())
+            {
+                throw new IOException("Detonate failed (" + resp.code() + "): " + respBody);
+            }
+        }
+    }
+
+    @Override
     public void publishGameEnded(String gameId, String writeKey) throws Exception
     {
         publishEvent(gameId, writeKey, "GAME_ENDED", new JsonObject());

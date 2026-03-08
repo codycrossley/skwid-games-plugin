@@ -23,10 +23,10 @@ public class RoleOverlay extends Overlay
     private final BufferedImage commanderIcon;
     private final BufferedImage guardIcon;
 
-    private static final Color CONTESTANT_ALIVE_COLOR = new Color(25, 177, 86);
+    static final Color CONTESTANT_ALIVE_COLOR       = new Color(25, 177, 86);
     private static final Color CONTESTANT_ELIMINATED_COLOR = new Color(214, 9, 65);
-    private static final Color COMMANDER_COLOR  = new Color(246, 101, 244);
-    private static final Color GUARD_COLOR      = new Color(246, 101, 244);
+    private static final Color COMMANDER_COLOR      = new Color(246, 101, 244);
+    static final Color GUARD_COLOR                  = new Color(246, 101, 244);
 
     private static final Color JOINED_COLOR = new Color(255, 222, 0);
     private static final Color REMOVED_COLOR    = new Color(24, 66, 5, 255);
