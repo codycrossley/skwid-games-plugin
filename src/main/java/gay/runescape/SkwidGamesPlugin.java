@@ -404,7 +404,6 @@ public class SkwidGamesPlugin extends Plugin
             try
             {
                 gameService.leaveGameRemote();
-                chat("Left game.");
             }
             catch (Exception e)
             {
@@ -880,13 +879,11 @@ public class SkwidGamesPlugin extends Plugin
         }
         if (target == null || target.isBlank())
         {
-            chat("Could not resolve player name.");
             return;
         }
 
         if (gameService.getActiveGameId() == null || gameService.getActiveGameId().isBlank())
         {
-            chat("No active Skwid Game. Use the panel to start or join a game first.");
             return;
         }
 
@@ -925,14 +922,12 @@ public class SkwidGamesPlugin extends Plugin
         String target = resolveMenuTarget(event.getMenuTarget());
         if (target == null || target.isBlank())
         {
-            chat("Could not resolve player name.");
             return;
         }
 
         String active = gameService.getActiveGameId();
         if (active == null || active.isBlank())
         {
-            chat("No active Skwid Game. Start or join a game first.");
             return;
         }
 
@@ -940,7 +935,6 @@ public class SkwidGamesPlugin extends Plugin
         PlayerRole role = rosterReducer.getRole(target);
         if (role != PlayerRole.CONTESTANT)
         {
-            chat(target + " is not a contestant.");
             return;
         }
 
@@ -957,7 +951,6 @@ public class SkwidGamesPlugin extends Plugin
 
         if (!isCommander && !isGuard)
         {
-            chat("Only the Commander or a Guard can eliminate players.");
             return;
         }
 

@@ -9,24 +9,34 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.OverlayUtil;
 import net.runelite.client.util.Text;
+import net.runelite.client.util.ImageUtil;
 
-import java.awt.BasicStroke;
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.Graphics2D;
-import java.awt.Polygon;
-import java.awt.RenderingHints;
+import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class SharedTileOverlay extends Overlay
 {
     // Default border colors used when entry.color is absent or unparseable
-    private static final Color COLOR_STANDARD       = new Color(255, 255,   0, 200); // yellow
-    private static final Color COLOR_LANDMINE           = new Color(0, 0, 0, 200);   // charcoal
-    private static final Color COLOR_LANDMINE_DETONATED = new Color(255, 69, 0, 200); // orange-red
-    private static final Color COLOR_STOPLIGHT_RED  = new Color(255,   0,   0, 200); // red
-    private static final Color COLOR_STOPLIGHT_GREEN = new Color(  0, 255,   0, 200); // green
+    private static final Color COLOR_STANDARD            = new Color(255, 255,   0, 200); // yellow
+    private static final Color COLOR_LANDMINE            = new Color(  0,   0,   0, 200); // charcoal
+    private static final Color COLOR_LANDMINE_DETONATED  = new Color(255, 106,   0, 200); // orange-red
+    private static final Color COLOR_STOPLIGHT_RED       = new Color(255,   0,   0, 200); // red
+    private static final Color COLOR_STOPLIGHT_GREEN     = new Color(  0, 255,   0, 200); // green
+
+    private static final long  DETONATION_ANIM_DURATION_MS = 1000;
+    private static final float DETONATION_MAX_RADIUS_FACTOR = 2.5f;
+
+    /**
+     * Keyed by WorldPoint string. Populated only when a tile transitions INTO LANDMINE_DETONATED.
+     * Removed when the tile leaves the snapshot.
+     */
+    private final Map<String, Long> detonationTimes = new HashMap<>();
+    /** Last-seen tileClass per tile, used to detect transitions. */
+    private final Map<String, String> previousTileClass = new HashMap<>();
 
     private final Client client;
     private final SkwidGamesConfig config;
@@ -63,6 +73,21 @@ public class SharedTileOverlay extends Overlay
 
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
+        // Update transition tracking: detect tiles that just became LANDMINE_DETONATED.
+        java.util.Set<String> currentKeys = new java.util.HashSet<>();
+        for (TileMarkerReducer.TileMarkerEntry e : entries)
+        {
+            String key = e.point.toString();
+            currentKeys.add(key);
+            String prev = previousTileClass.get(key);
+            if ("LANDMINE_DETONATED".equals(e.tileClass) && "LANDMINE".equals(prev))
+                detonationTimes.put(key, System.currentTimeMillis());
+            previousTileClass.put(key, e.tileClass);
+        }
+        // Clean up state for tiles no longer in the snapshot.
+        previousTileClass.keySet().retainAll(currentKeys);
+        detonationTimes.keySet().retainAll(currentKeys);
+
         for (TileMarkerReducer.TileMarkerEntry entry : entries)
         {
             if (!isVisibleToRole(entry, localRole)) continue;
@@ -96,12 +121,48 @@ public class SharedTileOverlay extends Overlay
             g.setStroke(new BasicStroke(1f));
             g.drawPolygon(poly);
 
+            if ("LANDMINE_DETONATED".equals(entry.tileClass))
+                renderDetonationEffect(g, entry, poly);
+
             if (entry.label != null && !entry.label.isBlank())
             {
                 int cx = (int) poly.getBounds().getCenterX();
                 int cy = (int) poly.getBounds().getCenterY();
                 OverlayUtil.renderTextLocation(g, new net.runelite.api.Point(cx, cy), entry.label, border);
             }
+        }
+    }
+
+    private void renderDetonationEffect(Graphics2D g, TileMarkerReducer.TileMarkerEntry entry, Polygon poly)
+    {
+        Long startTime = detonationTimes.get(entry.point.toString());
+        if (startTime == null) return;
+
+        long elapsed = System.currentTimeMillis() - startTime;
+        if (elapsed >= DETONATION_ANIM_DURATION_MS) return;
+
+        float progress = (float) elapsed / DETONATION_ANIM_DURATION_MS;
+
+        Rectangle bounds = poly.getBounds();
+        int cx = (int) bounds.getCenterX();
+        int cy = (int) bounds.getCenterY();
+        int tileHalfWidth = bounds.width / 2;
+
+        int radius = (int) (tileHalfWidth * DETONATION_MAX_RADIUS_FACTOR * progress);
+        int alpha  = (int) (200 * (1f - progress));
+
+        g.setColor(new Color(255, 106, 0, alpha));
+        g.setStroke(new BasicStroke(2f));
+        g.drawOval(cx - radius, cy - radius, radius * 2, radius * 2);
+
+        // Second ring, slightly delayed
+        if (progress > 0.2f)
+        {
+            float progress2 = (progress - 0.2f) / 0.8f;
+            int radius2 = (int) (tileHalfWidth * DETONATION_MAX_RADIUS_FACTOR * progress2);
+            int alpha2  = (int) (160 * (1f - progress2));
+            g.setColor(new Color(255, 200, 0, alpha2));
+            g.drawOval(cx - radius2, cy - radius2, radius2 * 2, radius2 * 2);
         }
     }
 
