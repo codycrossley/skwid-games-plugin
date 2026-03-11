@@ -27,8 +27,7 @@ public class SharedTileOverlay extends Overlay
     private static final Color COLOR_STOPLIGHT_RED       = new Color(255,   0,   0, 200); // red
     private static final Color COLOR_STOPLIGHT_GREEN     = new Color(  0, 255,   0, 200); // green
 
-    private static final long  DETONATION_ANIM_DURATION_MS = 1000;
-    private static final float DETONATION_MAX_RADIUS_FACTOR = 2.5f;
+    private static final long  DETONATION_ANIM_DURATION_MS = 1500;
 
     /**
      * Keyed by WorldPoint string. Populated only when a tile transitions INTO LANDMINE_DETONATED.
@@ -121,8 +120,8 @@ public class SharedTileOverlay extends Overlay
             g.setStroke(new BasicStroke(1f));
             g.drawPolygon(poly);
 
-            if ("LANDMINE_DETONATED".equals(entry.tileClass))
-                renderDetonationEffect(g, entry, poly);
+//            if ("LANDMINE_DETONATED".equals(entry.tileClass))
+//                renderDetonationEffect(g, entry, poly);
 
             if (entry.label != null && !entry.label.isBlank())
             {
@@ -141,29 +140,124 @@ public class SharedTileOverlay extends Overlay
         long elapsed = System.currentTimeMillis() - startTime;
         if (elapsed >= DETONATION_ANIM_DURATION_MS) return;
 
-        float progress = (float) elapsed / DETONATION_ANIM_DURATION_MS;
+        float t = (float) elapsed / DETONATION_ANIM_DURATION_MS; // 0 → 1
 
         Rectangle bounds = poly.getBounds();
         int cx = (int) bounds.getCenterX();
         int cy = (int) bounds.getCenterY();
-        int tileHalfWidth = bounds.width / 2;
+        int r  = Math.max(bounds.width, bounds.height) / 2;
 
-        int radius = (int) (tileHalfWidth * DETONATION_MAX_RADIUS_FACTOR * progress);
-        int alpha  = (int) (200 * (1f - progress));
+        Stroke savedStroke = g.getStroke();
+        Color  savedColor  = g.getColor();
 
-        g.setColor(new Color(255, 106, 0, alpha));
-        g.setStroke(new BasicStroke(2f));
-        g.drawOval(cx - radius, cy - radius, radius * 2, radius * 2);
-
-        // Second ring, slightly delayed
-        if (progress > 0.2f)
+        // Layer 1: Smoke/dust ring — slow, wide, late (t 0.45 → 1.0)
+        if (t > 0.45f)
         {
-            float progress2 = (progress - 0.2f) / 0.8f;
-            int radius2 = (int) (tileHalfWidth * DETONATION_MAX_RADIUS_FACTOR * progress2);
-            int alpha2  = (int) (160 * (1f - progress2));
-            g.setColor(new Color(255, 200, 0, alpha2));
-            g.drawOval(cx - radius2, cy - radius2, radius2 * 2, radius2 * 2);
+            float st = (t - 0.45f) / 0.55f;
+            int   sr = (int) (r * (1.8f + st * 2.0f));
+            int   sa = (int) (90 * (1f - st));
+            g.setColor(new Color(160, 100, 40, sa));
+            g.setStroke(new BasicStroke(3f + st * 4f));
+            g.drawOval(cx - sr, cy - sr, sr * 2, sr * 2);
         }
+
+        // Layer 2: Secondary shockwave ring — delayed (t 0.15 → 1.0)
+        if (t > 0.15f)
+        {
+            float t2 = (t - 0.15f) / 0.85f;
+            int   r2 = (int) (r * 3.0f * easeOut(t2));
+            int   a2 = (int) (150 * (1f - t2));
+            g.setColor(new Color(255, 200, 50, a2));
+            g.setStroke(new BasicStroke(1.5f));
+            g.drawOval(cx - r2, cy - r2, r2 * 2, r2 * 2);
+        }
+
+        // Layer 3: Primary shockwave ring (t 0 → 1.0)
+        {
+            int sr = (int) (r * 3.2f * easeOut(t));
+            int sa = (int) (220 * (1f - t));
+            g.setColor(new Color(255, 130, 0, sa));
+            g.setStroke(new BasicStroke(2.5f));
+            g.drawOval(cx - sr, cy - sr, sr * 2, sr * 2);
+        }
+
+        // Layer 4: Fireball core fill (t 0 → 0.55)
+        if (t < 0.55f)
+        {
+            float ft = t / 0.55f;
+            int   fr = (int) (r * 2.0f * easeOut(ft));
+            int   gr = (int) (200 * (1f - ft * 0.8f));
+            int   fa = (int) (200 * (1f - ft));
+            g.setColor(new Color(255, Math.max(0, gr), 0, fa));
+            g.fillOval(cx - fr, cy - fr, fr * 2, fr * 2);
+        }
+
+        // Layer 5: Ignition flash (t 0 → 0.12)
+        if (t < 0.12f)
+        {
+            float ft = t / 0.12f;
+            int   fa = (int) (230 * (1f - ft));
+            int   fr = (int) (r * 0.9f);
+            g.setColor(new Color(255, 255, 200, fa));
+            g.fillOval(cx - fr, cy - fr, fr * 2, fr * 2);
+        }
+
+        // Layer 6: Radial jets — 8 irregular streaks (t 0.04 → 0.70)
+        if (t > 0.04f && t < 0.70f)
+        {
+            float jt = (t - 0.04f) / 0.66f;
+            // Intentionally irregular angles and lengths — avoids uniform symmetry
+            int[]   angles  = {  8, 52, 97, 148, 188, 235, 278, 333 };
+            float[] lengths = { 1.9f, 1.3f, 2.1f, 1.5f, 2.0f, 1.2f, 1.8f, 1.4f };
+            float[] widths  = { 3.0f, 1.5f, 2.5f, 1.5f, 3.0f, 2.0f, 1.5f, 2.0f };
+
+            for (int i = 0; i < angles.length; i++)
+            {
+                double rad = Math.toRadians(angles[i]);
+                float  len = r * lengths[i] * easeOut(jt);
+                float fade = 1f - jt;
+                int    ja  = (int) (200 * fade);
+                int    jg  = (int) (140 * fade);
+                int x2 = cx + (int) (Math.cos(rad) * len);
+                int y2 = cy + (int) (Math.sin(rad) * len);
+                g.setColor(new Color(255, jg, 0, ja));
+                g.setStroke(new BasicStroke(widths[i]));
+                g.drawLine(cx, cy, x2, y2);
+            }
+        }
+
+        // Layer 7: Spark debris — small dots moving outward (t 0.08 → 0.85)
+        if (t > 0.08f && t < 0.85f)
+        {
+            float st   = (t - 0.08f) / 0.77f;
+            float fade = 1f - st;
+            // [angle°, speed×10] — uneven spacing, two speed tiers
+            int[][] sparks = {
+                { 22, 28 }, { 68, 20 }, { 115, 30 }, { 157, 22 },
+                { 202, 28 }, { 248, 20 }, { 295, 30 }, { 342, 22 },
+                { 43, 18 }, { 130, 25 }, { 218, 18 }, { 310, 25 }
+            };
+            for (int[] spark : sparks)
+            {
+                double rad  = Math.toRadians(spark[0]);
+                float  dist = r * (spark[1] / 10.0f) * easeOut(st);
+                int    sa   = (int) (255 * fade * fade); // quadratic fade
+                int sx = cx + (int) (Math.cos(rad) * dist);
+                int sy = cy + (int) (Math.sin(rad) * dist);
+                g.setColor(new Color(255, 220, 80, sa));
+                g.setStroke(savedStroke);
+                g.fillOval(sx - 2, sy - 2, 4, 4);
+            }
+        }
+
+        g.setStroke(savedStroke);
+        g.setColor(savedColor);
+    }
+
+    private static float easeOut(float t)
+    {
+        float c = 1f - t;
+        return 1f - c * c;
     }
 
     // -------------------------------------------------------------------------

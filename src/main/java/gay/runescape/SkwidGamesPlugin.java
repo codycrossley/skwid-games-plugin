@@ -8,6 +8,7 @@ import javax.swing.*;
 
 import lombok.extern.slf4j.Slf4j;
 
+import net.runelite.api.AnimationController;
 import net.runelite.api.Client;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.GameState;
@@ -15,14 +16,18 @@ import net.runelite.api.KeyCode;
 import net.runelite.api.Menu;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.Player;
+import net.runelite.api.RuneLiteObject;
 import net.runelite.api.Tile;
+import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.MenuOptionClicked;
-
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -60,6 +65,11 @@ public class SkwidGamesPlugin extends Plugin
     private SharedTileOverlay tileOverlay;
     /** RSNs (lowercase) for which the Commander has published an elimination this session. */
     private final Set<String> pendingEliminations = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /** World-space explosion objects currently active in the scene. Accessed on client thread only. */
+    private final List<RuneLiteObject> activeExplosions = new ArrayList<>();
+    // SpotanimID.REGICIDE_BARRELFLIGHT_EXPLODING (287) — model 3960, anim 1230
+    private static final int DETONATION_MODEL_ID = 3960;
+    private static final int DETONATION_ANIM_ID  = 1230;
 
     /** Item special-attack option names that trigger elimination when used on a player. */
     private static final Set<String> ELIMINATE_OPTIONS = java.util.Set.of(
@@ -112,6 +122,21 @@ public class SkwidGamesPlugin extends Plugin
             {
                 rosterReducer.apply(e);
                 tileMarkerReducer.apply(e);
+
+                // Spawn world-space explosion spotanim when a landmine is detonated
+                if ("TILE_MARKED".equals(e.type) && e.payload != null
+                        && e.payload.has("tileClass") && !e.payload.get("tileClass").isJsonNull()
+                        && "LANDMINE_DETONATED".equalsIgnoreCase(e.payload.get("tileClass").getAsString()))
+                {
+                    try
+                    {
+                        int sx     = e.payload.get("x").getAsInt();
+                        int sy     = e.payload.get("y").getAsInt();
+                        int splane = e.payload.get("plane").getAsInt();
+                        clientThread.invokeLater((Runnable) () -> spawnDetonationSpotanim(new WorldPoint(sx, sy, splane)));
+                    }
+                    catch (Exception ignored) {}
+                }
 
                 // Release pending-elimination lock when the relay confirms the elimination
                 if ("ELIMINATED".equals(e.type) && e.payload != null
@@ -428,6 +453,49 @@ public class SkwidGamesPlugin extends Plugin
         }
         pendingEliminations.clear();
         lastTileConfig = null;
+        clientThread.invokeLater((Runnable) this::clearActiveExplosions);
+    }
+
+    // -------------------------------------------------------------------------
+    // Detonation spotanim
+    // -------------------------------------------------------------------------
+
+    /** Spawns a world-space explosion at {@code wp}. Must be called on the client thread. */
+    private void spawnDetonationSpotanim(WorldPoint wp)
+    {
+        net.runelite.api.Model model = client.loadModel(DETONATION_MODEL_ID);
+        if (model == null) return;
+
+        final int animId = DETONATION_ANIM_ID;
+
+        Collection<WorldPoint> locals = WorldPoint.toLocalInstance(client.getTopLevelWorldView(), wp);
+        for (WorldPoint local : locals)
+        {
+            LocalPoint lp = LocalPoint.fromWorld(client.getTopLevelWorldView(), local);
+            if (lp == null) continue;
+
+            RuneLiteObject obj = client.createRuneLiteObject();
+            obj.setModel(model);
+            if (animId >= 0)
+            {
+                AnimationController ac = new AnimationController(client, animId);
+                ac.setOnFinished(_ac -> obj.setActive(false));
+                obj.setAnimationController(ac);
+            }
+            obj.setLocation(lp, wp.getPlane());
+            obj.setActive(true);
+            activeExplosions.add(obj);
+        }
+    }
+
+    /** Deactivates all active explosion objects. Must be called on the client thread. */
+    private void clearActiveExplosions()
+    {
+        for (RuneLiteObject obj : activeExplosions)
+        {
+            if (obj.isActive()) obj.setActive(false);
+        }
+        activeExplosions.clear();
     }
 
     public String getJoinCode()
