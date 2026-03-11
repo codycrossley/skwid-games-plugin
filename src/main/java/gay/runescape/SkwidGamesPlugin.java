@@ -67,9 +67,13 @@ public class SkwidGamesPlugin extends Plugin
     private final Set<String> pendingEliminations = java.util.concurrent.ConcurrentHashMap.newKeySet();
     /** World-space explosion objects currently active in the scene. Accessed on client thread only. */
     private final List<RuneLiteObject> activeExplosions = new ArrayList<>();
+
     // SpotanimID.REGICIDE_BARRELFLIGHT_EXPLODING (287) — model 3960, anim 1230
     private static final int DETONATION_MODEL_ID = 3960;
     private static final int DETONATION_ANIM_ID  = 1230;
+
+    // SpotanimID.FX_VOIDWAKER_IMPACT
+    private static final int STOPLIGHT_SPOTANIM_ID = 2363;
 
     /** Item special-attack option names that trigger elimination when used on a player. */
     private static final Set<String> ELIMINATE_OPTIONS = java.util.Set.of(
@@ -142,8 +146,15 @@ public class SkwidGamesPlugin extends Plugin
                 if ("ELIMINATED".equals(e.type) && e.payload != null
                         && e.payload.has("player") && !e.payload.get("player").isJsonNull())
                 {
-                    pendingEliminations.remove(
-                            e.payload.get("player").getAsString().toLowerCase(java.util.Locale.ROOT));
+                    final String eliminatedRsn = e.payload.get("player").getAsString();
+                    pendingEliminations.remove(eliminatedRsn.toLowerCase(java.util.Locale.ROOT));
+
+                    // Spawn stoplight spotanim if the game is in RED state
+                    if ("RED".equals(tileMarkerReducer.getStoplightState())
+                            && !tileMarkerReducer.snapshotStoplights().isEmpty())
+                    {
+                        clientThread.invokeLater((Runnable) () -> spawnStoplightSpotanim(eliminatedRsn, STOPLIGHT_SPOTANIM_ID));
+                    }
                 }
 
                 if ("GAME_ENDED".equals(e.type))
@@ -485,6 +496,18 @@ public class SkwidGamesPlugin extends Plugin
             obj.setLocation(lp, wp.getPlane());
             obj.setActive(true);
             activeExplosions.add(obj);
+        }
+    }
+
+    /** Spawns a spotanim on a named player at their current location. Must be called on the client thread. */
+    private void spawnStoplightSpotanim(String rsn, int spotanimId)
+    {
+        for (Player p : client.getPlayers())
+        {
+            if (p == null || p.getName() == null) continue;
+            if (!rsn.equalsIgnoreCase(net.runelite.client.util.Text.toJagexName(p.getName()))) continue;
+            p.createSpotAnim(0, spotanimId, 0, 0);
+            return;
         }
     }
 
