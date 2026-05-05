@@ -2,19 +2,37 @@ package gay.runescape;
 
 import com.google.gson.Gson;
 import com.google.inject.Provides;
+import java.awt.GridLayout;
+import java.awt.image.BufferedImage;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import javax.inject.Inject;
-import okhttp3.OkHttpClient;
-import javax.swing.*;
-
+import javax.swing.ButtonGroup;
+import javax.swing.JCheckBox;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JRadioButton;
+import javax.swing.JTextField;
+import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
-
 import net.runelite.api.AnimationController;
-import net.runelite.api.Client;
 import net.runelite.api.ChatMessageType;
+import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.KeyCode;
 import net.runelite.api.Menu;
+import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
+import net.runelite.api.Model;
 import net.runelite.api.Player;
 import net.runelite.api.RuneLiteObject;
 import net.runelite.api.Tile;
@@ -24,19 +42,17 @@ import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.MenuOptionClicked;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
-import net.runelite.client.plugins.*;
-import net.runelite.client.util.Text;
+import net.runelite.client.plugins.Plugin;
+import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ImageUtil;
+import net.runelite.client.util.Text;
+import okhttp3.OkHttpClient;
 
 
 @Slf4j
@@ -47,13 +63,13 @@ public class SkwidGamesPlugin extends Plugin
     @Inject private ClientThread clientThread;
     @Inject private ConfigManager configManager;
     @Inject private SkwidGamesConfig config;
-    @Inject private net.runelite.client.ui.ClientToolbar clientToolbar;
+    @Inject private ClientToolbar clientToolbar;
     @Inject private SkwidGamesPanel panel;
-    @Inject private net.runelite.client.ui.overlay.OverlayManager overlayManager;
+    @Inject private OverlayManager overlayManager;
     @Inject private OkHttpClient okHttpClient;
     @Inject private Gson gson;
 
-    private net.runelite.client.ui.NavigationButton navButton;
+    private NavigationButton navButton;
 
     private AccountConfig accountConfig;
     private GameService gameService;
@@ -64,7 +80,7 @@ public class SkwidGamesPlugin extends Plugin
     private TileMarkerReducer tileMarkerReducer;
     private SharedTileOverlay tileOverlay;
     /** RSNs (lowercase) for which the Commander has published an elimination this session. */
-    private final Set<String> pendingEliminations = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final Set<String> pendingEliminations = ConcurrentHashMap.newKeySet();
     /** World-space explosion objects currently active in the scene. Accessed on client thread only. */
     private final List<RuneLiteObject> activeExplosions = new ArrayList<>();
 
@@ -76,7 +92,7 @@ public class SkwidGamesPlugin extends Plugin
     private static final int STOPLIGHT_SPOTANIM_ID = 2363;
 
     /** Item special-attack option names that trigger elimination when used on a player. */
-    private static final Set<String> ELIMINATE_OPTIONS = java.util.Set.of(
+    private static final Set<String> ELIMINATE_OPTIONS = Set.of(
         "Enamour",  // Love Crossbow
         "Celebrate", // Dragon Candle Dagger
         "Duel",     // Mystic Cards
@@ -147,7 +163,7 @@ public class SkwidGamesPlugin extends Plugin
                         && e.payload.has("player") && !e.payload.get("player").isJsonNull())
                 {
                     final String eliminatedRsn = e.payload.get("player").getAsString();
-                    pendingEliminations.remove(eliminatedRsn.toLowerCase(java.util.Locale.ROOT));
+                    pendingEliminations.remove(eliminatedRsn.toLowerCase(Locale.ROOT));
 
                     // Spawn stoplight spotanim if the game is in RED state
                     if ("RED".equals(tileMarkerReducer.getStoplightState())
@@ -181,9 +197,9 @@ public class SkwidGamesPlugin extends Plugin
         tileOverlay = new SharedTileOverlay(client, config, gameService, tileMarkerReducer, rosterReducer);
         overlayManager.add(tileOverlay);
 
-        java.awt.image.BufferedImage icon = ImageUtil.loadImageResource(SkwidGamesPlugin.class, "panel_icon.png");
+        BufferedImage icon = ImageUtil.loadImageResource(SkwidGamesPlugin.class, "panel_icon.png");
 
-        navButton = net.runelite.client.ui.NavigationButton.builder()
+        navButton = NavigationButton.builder()
                 .tooltip("Skwid Games")
                 .icon(icon)
                 .panel(panel)
@@ -474,7 +490,7 @@ public class SkwidGamesPlugin extends Plugin
     /** Spawns a world-space explosion at {@code wp}. Must be called on the client thread. */
     private void spawnDetonationSpotanim(WorldPoint wp)
     {
-        net.runelite.api.Model model = client.loadModel(DETONATION_MODEL_ID);
+        Model model = client.loadModel(DETONATION_MODEL_ID);
         if (model == null) return;
 
         final int animId = DETONATION_ANIM_ID;
@@ -505,7 +521,7 @@ public class SkwidGamesPlugin extends Plugin
         for (Player p : client.getPlayers())
         {
             if (p == null || p.getName() == null) continue;
-            if (!rsn.equalsIgnoreCase(net.runelite.client.util.Text.toJagexName(p.getName()))) continue;
+            if (!rsn.equalsIgnoreCase(Text.toJagexName(p.getName()))) continue;
             p.createSpotAnim(0, spotanimId, 0, 0);
             return;
         }
@@ -531,7 +547,7 @@ public class SkwidGamesPlugin extends Plugin
         return gameService != null ? gameService.getCommander() : null;
     }
 
-    public java.util.List<RosterReducer.RosterEntry> getRosterSnapshot()
+    public List<RosterReducer.RosterEntry> getRosterSnapshot()
     {
         return rosterReducer.snapshot();
     }
@@ -544,7 +560,7 @@ public class SkwidGamesPlugin extends Plugin
     public boolean isLocalGuard()
     {
         if (rosterReducer == null || client.getLocalPlayer() == null || client.getLocalPlayer().getName() == null) return false;
-        String localName = net.runelite.client.util.Text.toJagexName(client.getLocalPlayer().getName());
+        String localName = Text.toJagexName(client.getLocalPlayer().getName());
         return localName != null && rosterReducer.getRole(localName) == PlayerRole.GUARD;
     }
 
@@ -623,10 +639,10 @@ public class SkwidGamesPlugin extends Plugin
         });
     }
 
-    private static java.util.List<RosterReducer.SnapshotPlayer> toSnapshotPlayers(
-            java.util.List<RelayClient.RosterPlayerOut> players)
+    private static List<RosterReducer.SnapshotPlayer> toSnapshotPlayers(
+            List<RelayClient.RosterPlayerOut> players)
     {
-        java.util.List<RosterReducer.SnapshotPlayer> out = new java.util.ArrayList<>();
+        List<RosterReducer.SnapshotPlayer> out = new ArrayList<>();
         if (players == null) return out;
         for (RelayClient.RosterPlayerOut p : players)
         {
@@ -673,7 +689,7 @@ public class SkwidGamesPlugin extends Plugin
         {
             try
             {
-                java.util.List<TileMarkerReducer.TileMarkerEntry> tiles =
+                List<TileMarkerReducer.TileMarkerEntry> tiles =
                         gameService.fetchTiles(gameId);
                 tileMarkerReducer.loadAll(tiles);
             }
@@ -704,7 +720,7 @@ public class SkwidGamesPlugin extends Plugin
             MenuEntry enlistEntry = client.createMenuEntry(-1)
                     .setOption("Enlist")
                     .setTarget(e.getTarget())
-                    .setType(net.runelite.api.MenuAction.RUNELITE_PLAYER)
+                    .setType(MenuAction.RUNELITE_PLAYER)
                     .setIdentifier(e.getIdentifier());
 
             final String contestantHex = String.format("%06X", RoleOverlay.CONTESTANT_ALIVE_COLOR.getRGB() & 0xFFFFFF);
@@ -714,18 +730,21 @@ public class SkwidGamesPlugin extends Plugin
             subMenu.createMenuEntry(-1)
                     .setOption("Remove")
                     .setTarget("")
-                    .setType(net.runelite.api.MenuAction.RUNELITE_PLAYER)
-                    .setIdentifier(e.getIdentifier());
+                    .setType(MenuAction.RUNELITE_PLAYER)
+                    .setIdentifier(e.getIdentifier())
+                    .onClick(me -> handleEnlistSubOption(me, null));
             subMenu.createMenuEntry(-1)
                     .setOption("<col=" + guardHex + ">Guard</col>")
                     .setTarget("")
-                    .setType(net.runelite.api.MenuAction.RUNELITE_PLAYER)
-                    .setIdentifier(e.getIdentifier());
+                    .setType(MenuAction.RUNELITE_PLAYER)
+                    .setIdentifier(e.getIdentifier())
+                    .onClick(me -> handleEnlistSubOption(me, PlayerRole.GUARD));
             subMenu.createMenuEntry(-1)
                     .setOption("<col=" + contestantHex + ">Contestant</col>")
                     .setTarget("")
-                    .setType(net.runelite.api.MenuAction.RUNELITE_PLAYER)
-                    .setIdentifier(e.getIdentifier());
+                    .setType(MenuAction.RUNELITE_PLAYER)
+                    .setIdentifier(e.getIdentifier())
+                    .onClick(me -> handleEnlistSubOption(me, PlayerRole.CONTESTANT));
         }
 
         // Tile marking: inject when Commander shift+right-clicks the ground
@@ -737,7 +756,7 @@ public class SkwidGamesPlugin extends Plugin
             Tile selectedTile = client.getSelectedSceneTile();
             if (selectedTile != null)
             {
-                WorldPoint wp = selectedTile.getWorldLocation();
+                final WorldPoint wp = selectedTile.getWorldLocation();
 
                 boolean alreadyMarked = tileMarkerReducer.getMarker(wp) != null;
 
@@ -755,14 +774,16 @@ public class SkwidGamesPlugin extends Plugin
                         client.createMenuEntry(-1)
                                 .setOption("Quick configure tile")
                                 .setTarget("")
-                                .setType(net.runelite.api.MenuAction.RUNELITE)
-                                .setDeprioritized(false);
+                                .setType(MenuAction.RUNELITE)
+                                .setDeprioritized(false)
+                                .onClick(me -> handleQuickMarkTile(wp));
                     }
                     client.createMenuEntry(-1)
                             .setOption("Reset tile")
                             .setTarget("")
-                            .setType(net.runelite.api.MenuAction.RUNELITE)
-                            .setDeprioritized(false);
+                            .setType(MenuAction.RUNELITE)
+                            .setDeprioritized(false)
+                            .onClick(me -> handleUnmarkTile(wp));
                 }
                 else
                 {
@@ -770,74 +791,35 @@ public class SkwidGamesPlugin extends Plugin
                     client.createMenuEntry(-1)
                             .setOption("Configure tile")
                             .setTarget("")
-                            .setType(net.runelite.api.MenuAction.RUNELITE)
-                            .setDeprioritized(false);
+                            .setType(MenuAction.RUNELITE)
+                            .setDeprioritized(false)
+                            .onClick(me -> handleMarkTile(wp));
                     if (lastTileConfig != null)
                     {
                         client.createMenuEntry(-1)
                                 .setOption("Quick configure tile")
                                 .setTarget("")
-                                .setType(net.runelite.api.MenuAction.RUNELITE)
-                                .setDeprioritized(false);
+                                .setType(MenuAction.RUNELITE)
+                                .setDeprioritized(false)
+                                .onClick(me -> handleQuickMarkTile(wp));
                     }
                 }
             }
         }
     }
 
+    /**
+     * Vanilla item special-attack options (e.g. "Enamour" on the Love Crossbow) are not entries
+     * we create, so we cannot attach an onClick consumer to them. Listen passively here so the
+     * special attack still fires normally and we layer the elimination on top.
+     */
     @Subscribe
     public void onMenuOptionClicked(MenuOptionClicked event)
     {
         final String opt = event.getMenuOption();
-        if (opt == null)
-        {
-            return;
-        }
-
-        // Strip color tags before matching (sub-menu options may be colored)
-        final String optClean = Text.removeTags(opt).trim();
-
-        if (ELIMINATE_OPTIONS.contains(opt))
+        if (opt != null && ELIMINATE_OPTIONS.contains(opt))
         {
             handleEliminate(event);
-            return;
-        }
-
-        if ("Contestant".equalsIgnoreCase(optClean))
-        {
-            handleEnlistSubOption(event, PlayerRole.CONTESTANT);
-            return;
-        }
-
-        if ("Guard".equalsIgnoreCase(optClean))
-        {
-            handleEnlistSubOption(event, PlayerRole.GUARD);
-            return;
-        }
-
-        if ("Remove".equalsIgnoreCase(optClean))
-        {
-            handleEnlistSubOption(event, null);
-            return;
-        }
-
-        // Tile marking
-        if ("Configure tile".equalsIgnoreCase(optClean))
-        {
-            handleMarkTile();
-            return;
-        }
-
-        if ("Quick configure tile".equalsIgnoreCase(optClean))
-        {
-            Tile tile = client.getSelectedSceneTile();
-            if (tile != null) handleQuickMarkTile(tile.getWorldLocation());
-            return;
-        }
-
-        if ("Reset tile".equalsIgnoreCase(optClean))
-        {
-            handleUnmarkTile();
         }
     }
 
@@ -868,13 +850,13 @@ public class SkwidGamesPlugin extends Plugin
 
             if (rosterReducer.getRole(rsn) != PlayerRole.CONTESTANT) continue;
             if (rosterReducer.getStatus(rsn) == PlayerStatus.ELIMINATED) continue;
-            if (pendingEliminations.contains(rsn.toLowerCase(java.util.Locale.ROOT))) continue;
+            if (pendingEliminations.contains(rsn.toLowerCase(Locale.ROOT))) continue;
 
             TileMarkerReducer.TileMarkerEntry landmine =
                     tileMarkerReducer.getMarker(p.getWorldLocation());
             if (landmine == null || !"LANDMINE".equalsIgnoreCase(landmine.tileClass)) continue;
 
-            pendingEliminations.add(rsn.toLowerCase(java.util.Locale.ROOT));
+            pendingEliminations.add(rsn.toLowerCase(Locale.ROOT));
             final String victim = rsn;
             final TileMarkerReducer.TileMarkerEntry triggeredTile = landmine;
             executor.execute(() ->
@@ -887,13 +869,13 @@ public class SkwidGamesPlugin extends Plugin
                 catch (Exception ex)
                 {
                     log.warn("Landmine eliminate failed for {}", victim, ex);
-                    pendingEliminations.remove(victim.toLowerCase(java.util.Locale.ROOT));
+                    pendingEliminations.remove(victim.toLowerCase(Locale.ROOT));
                 }
                 try
                 {
                     if (isCommander)
                     {
-                        Set<String> everyone = new HashSet<>(java.util.Arrays.asList(
+                        Set<String> everyone = new HashSet<>(Arrays.asList(
                                 "COMMANDER", "GUARD", "CONTESTANT"));
                         gameService.markTile(triggeredTile.point, triggeredTile.label,
                                 "LANDMINE_DETONATED", everyone);
@@ -914,7 +896,7 @@ public class SkwidGamesPlugin extends Plugin
     /** Must be called on the client thread. Eliminates all contestants currently on STOPLIGHT tiles. */
     private void eliminatePlayersOnStoplightTiles(boolean isCommander)
     {
-        java.util.List<TileMarkerReducer.TileMarkerEntry> stoplights =
+        List<TileMarkerReducer.TileMarkerEntry> stoplights =
                 tileMarkerReducer.snapshotStoplights();
         if (stoplights.isEmpty()) return;
 
@@ -931,11 +913,11 @@ public class SkwidGamesPlugin extends Plugin
             if (rsn == null || rsn.isBlank()) continue;
             if (rosterReducer.getRole(rsn) != PlayerRole.CONTESTANT) continue;
             if (rosterReducer.getStatus(rsn) == PlayerStatus.ELIMINATED) continue;
-            if (pendingEliminations.contains(rsn.toLowerCase(java.util.Locale.ROOT))) continue;
+            if (pendingEliminations.contains(rsn.toLowerCase(Locale.ROOT))) continue;
 
             if (stoplightPoints.contains(p.getWorldLocation()))
             {
-                pendingEliminations.add(rsn.toLowerCase(java.util.Locale.ROOT));
+                pendingEliminations.add(rsn.toLowerCase(Locale.ROOT));
                 final String victim = rsn;
                 executor.execute(() ->
                 {
@@ -947,7 +929,7 @@ public class SkwidGamesPlugin extends Plugin
                     catch (Exception ex)
                     {
                         log.warn("Stoplight eliminate failed for {}", victim, ex);
-                        pendingEliminations.remove(victim.toLowerCase(java.util.Locale.ROOT));
+                        pendingEliminations.remove(victim.toLowerCase(Locale.ROOT));
                     }
                 });
             }
@@ -955,18 +937,18 @@ public class SkwidGamesPlugin extends Plugin
     }
 
     /** Handles a child option from the "Enlist >" sub-menu. role=null means Remove. */
-    private void handleEnlistSubOption(MenuOptionClicked event, PlayerRole role)
+    private void handleEnlistSubOption(MenuEntry menuEntry, PlayerRole role)
     {
         // Prefer player lookup via identifier (target is empty on sub-menu children)
         final String target;
-        Player clickedPlayer = event.getMenuEntry().getPlayer();
+        Player clickedPlayer = menuEntry.getPlayer();
         if (clickedPlayer != null && clickedPlayer.getName() != null)
         {
             target = Text.toJagexName(clickedPlayer.getName());
         }
         else
         {
-            target = resolveMenuTarget(event.getMenuTarget());
+            target = resolveMenuTarget(menuEntry.getTarget());
         }
         if (target == null || target.isBlank())
         {
@@ -1099,46 +1081,42 @@ public class SkwidGamesPlugin extends Plugin
         });
     }
 
-    private void handleMarkTile()
+    private void handleMarkTile(WorldPoint wp)
     {
-        Tile tile = client.getSelectedSceneTile();
-        if (tile == null) return;
-        WorldPoint wp = tile.getWorldLocation();
-
         SwingUtilities.invokeLater(() ->
         {
             // --- Label ---
-            javax.swing.JTextField labelField = new javax.swing.JTextField(16);
+            JTextField labelField = new JTextField(16);
 
             // --- Tile class radio buttons ---
             String[] classes = {"STANDARD", "LANDMINE", "STOPLIGHT"};
-            javax.swing.ButtonGroup classGroup = new javax.swing.ButtonGroup();
-            javax.swing.JRadioButton[] classButtons = new javax.swing.JRadioButton[classes.length];
-            javax.swing.JPanel classPanel = new javax.swing.JPanel();
+            ButtonGroup classGroup = new ButtonGroup();
+            JRadioButton[] classButtons = new JRadioButton[classes.length];
+            JPanel classPanel = new JPanel();
             for (int i = 0; i < classes.length; i++)
             {
-                classButtons[i] = new javax.swing.JRadioButton(classes[i]);
+                classButtons[i] = new JRadioButton(classes[i]);
                 classGroup.add(classButtons[i]);
                 classPanel.add(classButtons[i]);
             }
             classButtons[0].setSelected(true); // STANDARD default
 
             // --- Visibility checkboxes ---
-            javax.swing.JCheckBox cbCommander  = new javax.swing.JCheckBox("Commander",  true);
-            javax.swing.JCheckBox cbGuard      = new javax.swing.JCheckBox("Guard",      true);
-            javax.swing.JCheckBox cbContestant = new javax.swing.JCheckBox("Contestant", true);
-            javax.swing.JPanel visPanel = new javax.swing.JPanel();
+            JCheckBox cbCommander  = new JCheckBox("Commander",  true);
+            JCheckBox cbGuard      = new JCheckBox("Guard",      true);
+            JCheckBox cbContestant = new JCheckBox("Contestant", true);
+            JPanel visPanel = new JPanel();
             visPanel.add(cbCommander);
             visPanel.add(cbGuard);
             visPanel.add(cbContestant);
 
             // --- Assemble panel ---
-            javax.swing.JPanel panel = new javax.swing.JPanel(new java.awt.GridLayout(0, 1, 4, 4));
-            panel.add(new javax.swing.JLabel("Label (optional):"));
+            JPanel panel = new JPanel(new GridLayout(0, 1, 4, 4));
+            panel.add(new JLabel("Label (optional):"));
             panel.add(labelField);
-            panel.add(new javax.swing.JLabel("Class:"));
+            panel.add(new JLabel("Class:"));
             panel.add(classPanel);
-            panel.add(new javax.swing.JLabel("Visible to:"));
+            panel.add(new JLabel("Visible to:"));
             panel.add(visPanel);
 
             int result = JOptionPane.showConfirmDialog(
@@ -1204,12 +1182,8 @@ public class SkwidGamesPlugin extends Plugin
         });
     }
 
-    private void handleUnmarkTile()
+    private void handleUnmarkTile(WorldPoint wp)
     {
-        Tile tile = client.getSelectedSceneTile();
-        if (tile == null) return;
-        WorldPoint wp = tile.getWorldLocation();
-
         executor.execute(() ->
         {
             try
